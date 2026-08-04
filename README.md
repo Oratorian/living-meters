@@ -505,6 +505,25 @@ node playthrough.js
 Neither is pasted into AI Dungeon. Both read `library.js`, `input.js`, `context.js` and `output.js`
 straight off disk, so they always test **exactly** what you would paste in.
 
+### No install: run the tuning tool in your browser
+
+**<https://oratorian.github.io/living-meters/>**
+
+Paste your `library.js`, press Run, get the same simulated run and tuning report as
+`node playthrough.js`. It loads the shipped config for you, and nothing is uploaded anywhere; the
+whole thing executes in your tab.
+
+It runs each hook in a throwaway `<iframe>`, whose `contentWindow` is a genuinely fresh global. That
+is the closest a browser gets to AI Dungeon's fresh isolate per hook, and it means `const RM_CONFIG`
+cannot collide between runs.
+
+Scheduling and analysis live in `docs/engine.js`, which **both** the browser page and
+`playthrough.js` import, so the two cannot drift apart and report different things about the same
+config.
+
+The browser version covers tuning only. For the correctness tests you still want
+`node test-harness.js`, which needs Node because it drives the hooks in ways a page cannot.
+
 ### How they fake the sandbox
 
 Both build the same simulation, because a shortcut here would hide the bugs that matter:
@@ -702,6 +721,8 @@ Neither replaces playing the scenario. They replace the *first twenty* playtests
 | `input.js` `context.js` `output.js` | Thin hook adapters. Paste into the matching tabs |
 | `test-harness.js` | Correctness tests. Config-driven, so it keeps working when you rewrite `RM_CONFIG` |
 | `playthrough.js` | Tuning tool. Builds a run from your config |
+| `docs/engine.js` | Scheduling and analysis, shared by the CLI and the browser page |
+| `docs/index.html` | The browser version, served at the GitHub Pages link above |
 | `README.md` | This file |
 | `LICENSE` | MIT |
 

@@ -48,8 +48,14 @@ if (PRESET) {
     .replace(/\n  resources: \[[\s\S]*?\n  \],/, "\n  resources: [],");
 }
 
-let SEED = SEED0 * 2654435761 % 2147483647;
-const rnd = () => (SEED = (SEED * 48271) % 2147483647) / 2147483647;
+// Scheduling and analysis live in docs/engine.js so that this CLI and the
+// browser page at docs/index.html cannot drift apart.
+require("./docs/engine.js");
+const E = globalThis.LM_ENGINE;
+const rnd = E.makeRnd(SEED0);
+
+// Story card ids are never reported, so keep them off the seeded stream.
+let CARD_SEQ = 0;
 
 // ---- colour -----------------------------------------------------------------
 
@@ -78,7 +84,7 @@ function makeSandbox(text, state, cards, hist, info) {
   sb.log = () => {};
   sb.console = { log: () => {}, error: () => {} };
   sb.addStoryCard = (keys, entry, type = "Custom", name = keys, notes = "", options) => {
-    sb.storyCards.push({ id: Math.floor(rnd() * 1e9).toString(),
+    sb.storyCards.push({ id: String(++CARD_SEQ),
       keys, entry, type, title: name, description: notes });
     if (options && options.returnCard) return sb.storyCards[sb.storyCards.length - 1];
     return sb.storyCards.length;
@@ -124,113 +130,9 @@ if (!DEFS.length) {
 
 // ---- synthesise the run -----------------------------------------------------
 
-// Carrier sentences. Deliberately bland and genre-neutral: their only job is to
-// place a trigger word into text the framework will scan.
-const OUT_FORMS = [
-  w => `And then: ${w}.`,
-  w => `It happens quickly — ${w} — and the moment passes.`,
-  w => `What follows is ${w}, and little else.`,
-  w => `There is ${w} to deal with now.`,
-  w => `The next stretch of time is all ${w}.`,
-];
-const IN_FORMS = [
-  w => `\n> You deal with the ${w}.`,
-  w => `\n> You turn your attention to ${w}.`,
-  w => `\n> You do what you can about ${w}.`,
-];
-const NEUTRAL_IN = [
-  "\n> You wait.",
-  "\n> You keep going.",
-  "\n> You take stock.",
-  "\n> You press on.",
-  "\n> You rest a moment.",   // note: may itself trigger, which is realistic
-];
-const NEUTRAL_OUT = [
-  "Time passes without incident.",
-  "Nothing of consequence occurs.",
-  "The moment stretches out and then lets go.",
-  "Quiet. For now.",
-];
-
-// Every trigger becomes one schedulable event. Losses are scheduled before
-// gains on the same resource, so a gain is not clamped away at the ceiling.
-function buildEvents() {
-  const perResource = DEFS.map(d => {
-    const usable = d.triggers.filter(t => t.words[0] !== "(custom pattern)");
-    const drains = usable.filter(t => t.delta < 0);
-    const gains = usable.filter(t => t.delta > 0);
-    const seq = [];
-    for (let i = 0; i < Math.max(drains.length, gains.length); i++) {
-      if (drains[i]) seq.push({ d, t: drains[i] });
-      if (gains[i]) seq.push({ d, t: gains[i] });
-    }
-    return seq;
-  });
-  // Round-robin so no single resource is hammered while others idle.
-  const flat = [];
-  for (let i = 0; ; i++) {
-    let any = false;
-    for (const seq of perResource) if (seq[i]) { flat.push(seq[i]); any = true; }
-    if (!any) break;
-  }
-  return flat;
-}
-
-function buildSchedule(events, turns) {
-  const plan = new Array(turns).fill(null);
-  // Turn 1 and the last turn are quiet, plus every sixth turn, so per-turn
-  // drift is observable on its own.
-  for (let i = 0; i < turns; i++) {
-    if (i === 0 || i === turns - 1 || (i + 1) % 6 === 0) plan[i] = [];
-  }
-  if (!events.length) return plan.map(p => p || []);
-
-  const order = events.slice();
-  if (SEED0 !== 1) {                                   // --seed shuffles
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = Math.floor(rnd() * (i + 1));
-      [order[i], order[j]] = [order[j], order[i]];
-    }
-  }
-
-  let e = 0;
-  for (let i = 0; i < turns; i++) {
-    if (plan[i] !== null) continue;
-    const batch = [order[e % order.length]];
-    e++;
-    // Every third busy turn pairs two events on DIFFERENT resources, which is
-    // how interlocking configs (repair costs parts) show themselves.
-    if (order.length > 1 && i % 3 === 0) {
-      const cand = order[e % order.length];
-      if (cand.d.id !== batch[0].d.id) { batch.push(cand); e++; }
-    }
-    plan[i] = batch;
-  }
-  return plan;
-}
-
-const EVENTS = buildEvents();
-const PLAN = buildSchedule(EVENTS, TURNS);
-
-function renderTurn(batch, n) {
-  if (!batch.length) {
-    return [NEUTRAL_IN[n % NEUTRAL_IN.length], NEUTRAL_OUT[n % NEUTRAL_OUT.length]];
-  }
-  const inWords = [], outWords = [];
-  batch.forEach(ev => {
-    const w = ev.t.words[Math.floor(rnd() * ev.t.words.length)].replace(/\*$/, "");
-    // "input" must appear in the action; everything else goes in the narration,
-    // where an on:"both" trigger still fires exactly once.
-    (ev.t.on === "input" ? inWords : outWords).push(w);
-  });
-  const input = inWords.length
-    ? IN_FORMS[n % IN_FORMS.length](inWords.join(" and "))
-    : NEUTRAL_IN[n % NEUTRAL_IN.length];
-  const output = outWords.length
-    ? outWords.map((w, i) => OUT_FORMS[(n + i) % OUT_FORMS.length](w)).join(" ")
-    : NEUTRAL_OUT[n % NEUTRAL_OUT.length];
-  return [input, output];
-}
+const EVENTS = E.buildEvents(DEFS);
+const PLAN = E.buildSchedule(EVENTS, TURNS, rnd, SEED0 !== 1);
+const renderTurn = (batch, n) => E.renderTurn(batch, n, rnd);
 
 // ---- run --------------------------------------------------------------------
 
@@ -343,71 +245,26 @@ for (const d of DEFS) {
 
 console.log("\n" + C.bold("── Tuning " + "─".repeat(67)) + "\n");
 
-const warnings = [];
-const unvisited = [];
-for (const d of DEFS) {
-  const series = trace.map(t => t[d.id]);
+const ANALYSIS = E.analyse(DEFS, trace, seenBands, moved, TURNS);
 
-  // Share of the whole run spent pinned at either end. Measuring the whole run
-  // rather than just the tail catches a resource that floors early, gets one
-  // lucky bump, and floors again.
-  const atMin = series.filter(v => v <= d.min + 0.001).length;
-  const atMax = series.filter(v => v >= d.max - 0.001).length;
-
-  // Turns until drift alone exhausts it, from where it started.
-  let projection = "";
-  if (d.perTurn < 0) {
-    const n = Math.ceil((d.start - d.min) / Math.abs(d.perTurn));
-    projection = n <= 0
-      ? `${d.perTurn}/turn → starts on its floor`
-      : `${d.perTurn}/turn → floor in ~${n} turns`;
-  } else if (d.perTurn > 0) {
-    const n = Math.ceil((d.max - d.start) / d.perTurn);
-    projection = n <= 0
-      ? `+${d.perTurn}/turn → starts at its ceiling, refills after any loss`
-      : `+${d.perTurn}/turn → ceiling in ~${n} turns`;
-  } else {
-    projection = C.dim("no drift — triggers only");
-  }
-
-  const visited = seenBands[d.id].size;
-  const total = new Set(d.bands.map(b => b.name)).size || 1;
-
-  console.log(`  ${(d.icon || "•")} ${d.label.padEnd(13)}${projection}` +
-    `${" ".repeat(Math.max(1, 34 - projection.replace(/\x1b\[[0-9;]*m/g, "").length))}` +
-    C.dim(`bands ${visited}/${total}`));
-
-  if (atMin / TURNS >= 0.3)
-    warnings.push(`${d.label} spent ${Math.round(atMin / TURNS * 100)}% of the run on its floor ` +
-      `(${d.min}). Fine if it is meant to spike and decay back to a baseline; otherwise raise ` +
-      `\`start\`, soften \`perTurn\`, or add a stronger recovery trigger.`);
-  if (atMax / TURNS >= 0.5 && d.perTurn <= 0 && d.triggers.some(t => t.delta < 0))
-    warnings.push(`${d.label} spent ${Math.round(atMax / TURNS * 100)}% of the run at its ceiling ` +
-      `(${d.max}) — it is under no real pressure, and gains are being clamped away.`);
-  if (!moved[d.id] && d.triggers.length)
-    warnings.push(`${d.label} has ${d.triggers.length} trigger(s) but none of them changed it ` +
-      `during this run — check the words, or it may be clamped at a limit.`);
-  if (!d.triggers.length && !d.perTurn)
-    warnings.push(`${d.label} has no triggers and no drift — nothing can ever change it.`);
-  const maxBand = Math.max(...d.bands.map(b => b.upTo ?? 0));
-  if (d.bands.length && maxBand < d.max)
-    warnings.push(`${d.label} bands stop at ${maxBand} but max is ${d.max} — ` +
-      `values above ${maxBand} fall back to the last band.`);
-
-  if (visited < total && total > 1) unvisited.push(`${d.label} ${visited}/${total}`);
+for (const row of ANALYSIS.rows) {
+  const pad = " ".repeat(Math.max(1, 34 - row.projection.length));
+  const proj = row.def.perTurn === 0 ? C.dim(row.projection) : row.projection;
+  console.log(`  ${(row.def.icon || "•")} ${row.def.label.padEnd(13)}${proj}${pad}` +
+    C.dim(`bands ${row.visited}/${row.total}`));
 }
 
-if (warnings.length) {
-  console.log("\n" + C.yellow(`  ${warnings.length} thing(s) worth looking at:`));
-  warnings.forEach(w => console.log(C.yellow("   • ") + w));
+if (ANALYSIS.warnings.length) {
+  console.log("\n" + C.yellow(`  ${ANALYSIS.warnings.length} thing(s) worth looking at:`));
+  ANALYSIS.warnings.forEach(w => console.log(C.yellow("   • ") + w));
 } else {
   console.log("\n" + C.green("  Nothing looks mistuned over this run."));
 }
 
-// Not a fault — a 30-turn run simply may not reach every band. Worth knowing
+// Not a fault: a 30-turn run simply may not reach every band. Worth knowing
 // which narrative instructions the AI has never actually been given.
-if (unvisited.length) {
-  console.log("\n" + C.dim(`  Bands not reached in ${TURNS} turns: ${unvisited.join(", ")}.`));
+if (ANALYSIS.unvisited.length) {
+  console.log("\n" + C.dim(`  Bands not reached in ${TURNS} turns: ${ANALYSIS.unvisited.join(", ")}.`));
   console.log(C.dim(`  Those tells have never been sent to the AI. Try a longer run ` +
     `(node playthrough.js 120) to see whether they are reachable at all.`));
 }

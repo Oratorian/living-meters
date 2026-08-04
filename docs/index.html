@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Living Meters: tune your config in the browser</title>
+<meta name="description" content="Paste your Living Meters config and get a simulated run plus a tuning report. No install, no Node.">
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --line:#262b36; --fg:#d7dbe3; --dim:#8a93a6;
+    --acc:#7aa2f7; --ok:#7bd88f; --bad:#f7768e; --warn:#e0af68; --mag:#bb9af7;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f6f7f9; --panel:#fff; --line:#dfe3ea; --fg:#1c2128; --dim:#5b6472;
+            --acc:#2f5fd0; --ok:#1a7f4b; --bad:#c0392b; --warn:#9a6b00; --mag:#6b3fa0; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px 18px 60px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  h1 .em { font-size:26px; }
+  .sub { color:var(--dim); margin:0 0 20px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--dim); margin-bottom:5px; }
+  textarea { width:100%; height:220px; background:var(--bg); color:var(--fg); border:1px solid var(--line);
+             border-radius:8px; padding:10px; font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; resize:vertical; }
+  .controls { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; margin-top:12px; }
+  input[type=number], select { background:var(--bg); color:var(--fg); border:1px solid var(--line);
+             border-radius:7px; padding:7px 9px; font:14px inherit; }
+  input[type=number] { width:88px; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:7px; padding:9px 20px;
+           font:600 14px inherit; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; color:var(--acc); border:1px solid var(--line); }
+  pre { margin:0; font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; overflow-x:auto; }
+  .out { display:none; }
+  .out.on { display:block; }
+  .dim{color:var(--dim)} .ok{color:var(--ok)} .bad{color:var(--bad)}
+  .warn{color:var(--warn)} .mag{color:var(--mag)} .acc{color:var(--acc)}
+  .b{font-weight:600}
+  h2 { font-size:15px; margin:0 0 10px; letter-spacing:.02em; text-transform:uppercase; color:var(--dim); }
+  .err { border-color:var(--bad); }
+  .err pre { color:var(--bad); }
+  .foot { color:var(--dim); font-size:13px; margin-top:26px; }
+  a { color:var(--acc); }
+  .status { color:var(--dim); font-size:13px; margin-left:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1><span class="em">🎚️</span> Living Meters</h1>
+  <p class="sub">Paste your config, get a simulated run and a tuning report. Nothing is uploaded; it all runs in this tab.</p>
+
+  <div class="panel">
+    <label for="src"><span class="b">library.js</span> &mdash; the whole file, including the framework below your config</label>
+    <textarea id="src" spellcheck="false" placeholder="Loading the shipped library.js..."></textarea>
+    <div class="controls">
+      <div><label for="turns">Turns</label><input type="number" id="turns" value="30" min="1" max="500"></div>
+      <div><label for="seed">Seed</label><input type="number" id="seed" value="1" min="1" max="9999"></div>
+      <div><label for="preset">Preset override</label>
+        <select id="preset">
+          <option value="">use the file's own</option>
+          <option>survival</option><option>fantasy</option>
+          <option>scifi</option><option>noir</option><option>none</option>
+        </select>
+      </div>
+      <div><label for="detail">Detail</label>
+        <select id="detail"><option value="full">every turn</option><option value="quiet">report only</option></select>
+      </div>
+      <button id="run">Run</button>
+      <button id="reset" class="ghost">Reload shipped config</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <div class="panel out" id="out"><pre id="report"></pre></div>
+
+  <p class="foot">
+    Same scheduling and analysis as <code>node playthrough.js</code>, running each hook in a throwaway
+    iframe instead of a Node vm context. For correctness tests use <code>node test-harness.js</code>.
+    &middot; <a href="https://github.com/Oratorian/living-meters">Source</a> &middot; MIT
+  </p>
+</div>
+
+<script src="engine.js"></script>
+<script>
+"use strict";
+const RAW = "https://raw.githubusercontent.com/Oratorian/living-meters/main/library.js";
+
+// The three hook tabs are fixed boilerplate; only library.js is worth editing.
+const HOOKS = {
+  input:   'const modifier = (text) => { text = RM.input(text); return { text }; };\nmodifier(text);',
+  context: 'const modifier = (text) => { [text, stop] = RM.context(text, stop); return { text, stop }; };\nmodifier(text);',
+  output:  'const modifier = (text) => { text = RM.output(text); return { text }; };\nmodifier(text);',
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+
+// ---- sandbox ---------------------------------------------------------------
+// A throwaway iframe per hook. Its contentWindow is a genuinely fresh global,
+// which is the closest a browser gets to AI Dungeon's fresh isolate per hook,
+// and it means `const RM_CONFIG` cannot collide between runs.
+function bootstrap(p) {
+  return 'var __d = ' + JSON.stringify(p) + ';\n' +
+    'var text = __d.text, stop = false, memory = {};\n' +
+    'var state = __d.state, storyCards = __d.storyCards, history = __d.history, info = __d.info;\n' +
+    'var __logs = [];\n' +
+    'function log(){ for (var i=0;i<arguments.length;i++) { var a=arguments[i];\n' +
+    '  __logs.push(typeof a === "string" ? a : JSON.stringify(a)); } }\n' +
+    'var console = { log: log, error: log, warn: log, info: log };\n' +
+    'function addStoryCard(keys, entry, type, name, notes, options) {\n' +
+    '  if (type === undefined) type = "Custom";\n' +
+    '  if (name === undefined) name = keys;\n' +
+    '  if (notes === undefined) notes = "";\n' +
+    '  storyCards.push({ id: String(Math.floor(Math.random()*1e9)), keys: keys, entry: entry,\n' +
+    '                    type: type, title: name, description: notes });\n' +
+    '  if (options && options.returnCard) return storyCards[storyCards.length-1];\n' +
+    '  return storyCards.length; }\n' +
+    'function removeStoryCard(i){ if(!storyCards[i]) throw new Error("Story card not found at index "+i);\n' +
+    '  storyCards.splice(i,1); }\n' +
+    'function updateStoryCard(i, keys, entry, type, name, notes){ var ex = storyCards[i];\n' +
+    '  if(!ex) throw new Error("Story card not found at index "+i);\n' +
+    '  storyCards[i] = { id: ex.id, keys: keys, entry: entry,\n' +
+    '    type: type === undefined ? ex.type : type,\n' +
+    '    title: name === undefined ? ex.title : name,\n' +
+    '    description: notes === undefined ? ex.description : notes }; }\n';
+}
+
+function sandbox(libSrc, tail, payload) {
+  const f = document.createElement("iframe");
+  f.style.display = "none";
+  document.body.appendChild(f);
+  try {
+    const w = f.contentWindow;
+    w.eval(bootstrap(payload));
+    const ret = w.eval(libSrc + "\n\n" + tail);
+    return {
+      ret: ret,
+      state: JSON.parse(w.eval("JSON.stringify(state)")),
+      storyCards: JSON.parse(w.eval("JSON.stringify(storyCards)")),
+      logs: JSON.parse(w.eval("JSON.stringify(__logs)")),
+    };
+  } finally {
+    f.remove();
+  }
+}
+
+const EMPTY = { text: " ", state: {}, storyCards: [], history: [],
+                info: { actionCount: 1, characterNames: [], maxChars: 8000 } };
+
+function inspect(libSrc, expr) {
+  return JSON.parse(sandbox(libSrc, ";JSON.stringify(" + expr + ")", EMPTY).ret);
+}
+
+// ---- driver ----------------------------------------------------------------
+
+function runAll(libSrc, turns, seed, detail) {
+  const E = window.LM_ENGINE;
+  const defs = inspect(libSrc, "RM.defs()").filter((d) => d.enabled);
+  const problems = inspect(libSrc, "RM.problems()");
+  const setup = inspect(libSrc,
+    "({preset: RM_CONFIG.preset, inject: RM_CONFIG.inject, label: RM_CONFIG.injectLabel," +
+    " difficulty: RM_CONFIG.difficulty})");
+  const cardTitle = inspect(libSrc, "RM_CONFIG.playerCardTitle");
+
+  if (!defs.length) {
+    return { fatal: "No meters are configured. Set RM_CONFIG.preset, or add entries to RM_CONFIG.resources." };
+  }
+
+  const rnd = E.makeRnd(seed);
+  const events = E.buildEvents(defs);
+  const plan = E.buildSchedule(events, turns, rnd, seed !== 1);
+
+  const world = { state: {}, storyCards: [], history: [], ac: 0 };
+  const trace = [], lines = [], toasts = [];
+  const seenBands = {}, moved = {};
+  defs.forEach((d) => { seenBands[d.id] = new Set(); moved[d.id] = false; });
+  let worstMs = 0, lastCtx = "";
+
+  const snap = () => JSON.parse(JSON.stringify(world.state.RM ? world.state.RM.res : {}));
+  const bandsOf = () => JSON.parse(JSON.stringify(world.state.RM ? world.state.RM.band : {}));
+
+  function step(hook, text, info) {
+    const t0 = performance.now();
+    const r = sandbox(libSrc, HOOKS[hook], {
+      text: text, state: world.state, storyCards: world.storyCards,
+      history: world.history, info: info,
+    });
+    worstMs = Math.max(worstMs, performance.now() - t0);
+    world.state = r.state;
+    world.storyCards = r.storyCards;
+    return r;
+  }
+
+  for (let n = 0; n < turns; n++) {
+    const pair = E.renderTurn(plan[n], n, rnd);
+    const action = pair[0], aiText = pair[1];
+    const before = snap(), beforeBands = bandsOf();
+
+    world.ac += 1;
+    const i = step("input", action, { actionCount: world.ac, characterNames: [] });
+    world.history.push({ text: action, rawText: action, type: "do" });
+
+    world.ac += 1;
+    const ctxText = "Plot Essentials\nWorld Lore:\n\nRecent Story:\n" +
+      world.history.slice(-8).map((h) => h.text).join("\n");
+    const c = step("context", ctxText, {
+      actionCount: world.ac, characterNames: [], maxChars: 8000,
+      memoryLength: 0, contextTokens: 2000,
+      storyModel: { name: "Dynamic Small", version: "1.0.0" },
+    });
+
+    const o = step("output", aiText, { actionCount: world.ac, characterNames: [] });
+    world.history.push({ text: aiText, rawText: aiText, type: "continue" });
+
+    const after = snap(), afterBands = bandsOf();
+    trace.push(after);
+    defs.forEach((d) => { if (afterBands[d.id]) seenBands[d.id].add(afterBands[d.id]); });
+    [i, c, o].forEach((r) => {
+      const m = r.state && r.state.message;
+      if (m && toasts.indexOf(m) === -1) toasts.push(m);
+    });
+    if (c.ret && typeof c.ret.text === "string") lastCtx = c.ret.text;
+
+    defs.forEach((d) => {
+      const delta = (after[d.id] || 0) - (before[d.id] || 0);
+      if (Math.abs(delta) > 0.001 && Math.abs(delta - d.perTurn) > 0.001) moved[d.id] = true;
+    });
+
+    if (detail === "full") {
+      lines.push('<span class="dim">' + "─".repeat(72) + "</span>");
+      lines.push('<span class="b">Turn ' + String(n + 1).padStart(2) + "</span>  " +
+        '<span class="acc">▸</span> ' + esc(action.replace(/^\n> /, "")));
+      lines.push('        <span class="dim">◂ ' +
+        esc(aiText.length > 88 ? aiText.slice(0, 88) + "…" : aiText) + "</span>");
+      for (const d of defs) {
+        const b = before[d.id], a = after[d.id];
+        if (b === undefined || a === undefined || Math.abs(a - b) < 0.001) continue;
+        const delta = a - b;
+        const drifted = Math.abs(delta - d.perTurn) < 0.001;
+        const row = "   " + (d.icon || "•") + " " + d.label.padEnd(13) +
+          b.toFixed(1).padStart(7) + " → " + a.toFixed(1).padStart(7) + "  " +
+          (delta > 0 ? "▲" : "▼") + Math.abs(delta).toFixed(1);
+        lines.push('<span class="' + (drifted ? "dim" : delta > 0 ? "ok" : "bad") + '">' + esc(row) + "</span>");
+      }
+      for (const d of defs) {
+        if (beforeBands[d.id] !== undefined && afterBands[d.id] !== beforeBands[d.id]) {
+          lines.push('<span class="warn">   ⚠  ' + esc(d.label) + ": " +
+            esc(beforeBands[d.id] || "—") + " → " + esc(afterBands[d.id]) + "</span>");
+        }
+      }
+      if ((n + 1) % 10 === 0 || n === turns - 1) {
+        const block = setup.inject === "none"
+          ? '(inject is "none", so the AI is told nothing)'
+          : (setup.inject === "context" ? lastCtx.split("\n").pop() : "(written to frontMemory)");
+        lines.push("");
+        lines.push('<span class="mag">   ┌─ what the AI is told after turn ' + (n + 1) + " " + "─".repeat(30) + "</span>");
+        String(block).replace(/^\[|\]$/g, "").split(/(?<=\.) /).forEach((s) =>
+          lines.push('<span class="mag">   │ </span>' + esc(s.trim())));
+        lines.push('<span class="mag">   └' + "─".repeat(66) + "</span>");
+      }
+      lines.push("");
+    }
+  }
+
+  const res = E.analyse(defs, trace, seenBands, moved, turns);
+  const final = snap(), finalBands = bandsOf();
+  const card = world.storyCards.filter((c) => c.title === cardTitle)[0];
+
+  return {
+    defs: defs, problems: problems, setup: setup, lines: lines, analysis: res,
+    final: final, finalBands: finalBands, card: card, toasts: toasts,
+    worstMs: worstMs, stateSize: JSON.stringify(world.state).length,
+    cardCount: world.storyCards.length, triggerCount: events.length,
+  };
+}
+
+// ---- rendering -------------------------------------------------------------
+
+function render(r, turns) {
+  if (r.fatal) return '<span class="bad">' + esc(r.fatal) + "</span>";
+  const L = [];
+  L.push('<span class="b">' + esc(r.defs.length) + " meters, " + esc(r.triggerCount) + " triggers</span>" +
+    '<span class="dim">   preset ' + esc(r.setup.preset) + "   inject " + esc(r.setup.inject) +
+    "   difficulty " + esc(r.setup.difficulty) + "</span>");
+  L.push('<span class="dim">' + esc(r.defs.map((d) => (d.icon ? d.icon + " " : "") + d.label).join("   ")) + "</span>");
+  if (r.problems.length) {
+    L.push("");
+    L.push('<span class="bad">config problems:</span>');
+    r.problems.forEach((p) => L.push('<span class="bad">  • ' + esc(p) + "</span>"));
+  }
+  L.push("");
+  if (r.lines.length) { L.push.apply(L, r.lines); }
+
+  L.push('<span class="b">── Final state ' + "─".repeat(56) + "</span>");
+  L.push("");
+  for (const d of r.defs) {
+    const v = r.final[d.id];
+    const span = (d.max - d.min) || 1;
+    const filled = Math.max(0, Math.min(10, Math.round(((v - d.min) / span) * 10)));
+    L.push("  " + (d.icon || "•") + " " + esc(d.label.padEnd(13)) +
+      "█".repeat(filled) + "░".repeat(10 - filled) + " " +
+      String(Math.round(v)).padStart(6) + "/" + d.max + "   " +
+      '<span class="dim">' + esc(r.finalBands[d.id] || "") + "</span>");
+  }
+
+  L.push("");
+  L.push('<span class="b">── Tuning ' + "─".repeat(61) + "</span>");
+  L.push("");
+  for (const row of r.analysis.rows) {
+    const pad = Math.max(1, 34 - row.projection.length);
+    L.push("  " + (row.def.icon || "•") + " " + esc(row.def.label.padEnd(13)) +
+      esc(row.projection) + " ".repeat(pad) +
+      '<span class="dim">bands ' + row.visited + "/" + row.total + "</span>");
+  }
+  L.push("");
+  if (r.analysis.warnings.length) {
+    L.push('<span class="warn">  ' + r.analysis.warnings.length + " thing(s) worth looking at:</span>");
+    r.analysis.warnings.forEach((w) => L.push('<span class="warn">   • </span>' + esc(w)));
+  } else {
+    L.push('<span class="ok">  Nothing looks mistuned over this run.</span>');
+  }
+  if (r.analysis.unvisited.length) {
+    L.push("");
+    L.push('<span class="dim">  Bands not reached in ' + turns + " turns: " +
+      esc(r.analysis.unvisited.join(", ")) + ".</span>");
+    L.push('<span class="dim">  Those tells have never been sent to the AI. Try a longer run.</span>');
+  }
+
+  L.push("");
+  L.push('<span class="b">── Runtime ' + "─".repeat(60) + "</span>");
+  L.push("");
+  L.push("  worst hook        " + r.worstMs.toFixed(0) + " ms " +
+    '<span class="dim">(AI Dungeon budget 2000, though a browser is not the same engine)</span>');
+  L.push("  state size        " + r.stateSize + " chars");
+  L.push("  story cards       " + r.cardCount +
+    (r.card ? '<span class="dim">  — "' + esc(r.card.title) + '", keys "' + esc(r.card.keys) + '"</span>'
+            : '<span class="warn">  none created</span>'));
+  L.push("  toasts shown      " + r.toasts.length);
+  return L.join("\n");
+}
+
+// ---- wiring ----------------------------------------------------------------
+
+function setStatus(msg, cls) { $("status").innerHTML = cls ? '<span class="' + cls + '">' + esc(msg) + "</span>" : esc(msg); }
+
+async function loadShipped() {
+  setStatus("fetching the shipped library.js...");
+  try {
+    const res = await fetch(RAW, { cache: "no-cache" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    $("src").value = await res.text();
+    setStatus("loaded the shipped config. Edit it, or paste your own.", "dim");
+  } catch (e) {
+    setStatus("could not fetch it (" + e.message + "). Paste your library.js instead.", "warn");
+    $("src").placeholder = "Paste the full contents of your library.js here.";
+  }
+}
+
+$("run").addEventListener("click", function () {
+  let src = $("src").value;
+  if (!src.trim()) { setStatus("paste your library.js first.", "warn"); return; }
+
+  const preset = $("preset").value;
+  if (preset) {
+    // Preview a built-in preset on its own, exactly as --preset does.
+    src = src.replace(/preset:\s*"[a-z]+"/, 'preset: "' + preset + '"')
+             .replace(/\n  resources: \[[\s\S]*?\n  \],/, "\n  resources: [],");
+  }
+
+  const turns = Math.max(1, Math.min(500, parseInt($("turns").value, 10) || 30));
+  const seed = Math.max(1, parseInt($("seed").value, 10) || 1);
+  const detail = $("detail").value;
+
+  $("run").disabled = true;
+  setStatus("running " + turns + " turns...");
+  $("out").classList.remove("on", "err");
+
+  // Yield once so the button state and status actually paint before the
+  // synchronous run blocks the main thread.
+  setTimeout(function () {
+    const t0 = performance.now();
+    try {
+      const r = runAll(src, turns, seed, detail);
+      $("report").innerHTML = render(r, turns);
+      $("out").classList.add("on");
+      setStatus("done in " + Math.round(performance.now() - t0) + " ms", "dim");
+    } catch (e) {
+      $("report").innerHTML = '<span class="bad">' + esc((e && e.stack) || e) + "</span>";
+      $("out").classList.add("on", "err");
+      setStatus("the script threw. See below.", "bad");
+    } finally {
+      $("run").disabled = false;
+    }
+  }, 20);
+});
+
+$("reset").addEventListener("click", loadShipped);
+loadShipped();
+</script>
+</body>
+</html>
