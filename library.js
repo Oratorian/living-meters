@@ -276,7 +276,7 @@ const RM_CONFIG = {
   // Show the full status toast every N turns. 0 disables.
   statusEvery: 0,
 
-  // Maintain a "Resources" story card the player can read and edit.
+  // Maintain a "Living Meters" story card the player can read and edit.
   playerCard: true,
   playerCardTitle: "⚙️ Living Meters",
 
@@ -940,7 +940,7 @@ const RM = (function () {
     }
     if (!stats.length && !tells.length) return "";
 
-    let out = `[${RM_CONFIG.injectLabel} — ${stats.join(", ")}.`;
+    let out = `[${RM_CONFIG.injectLabel}: ${stats.join(", ")}.`;
     if (tells.length) out += " " + tells.join(" ");
     out += " Reflect this in the narration through behaviour and sensation;" +
            " never state the numbers themselves.]";
@@ -1027,7 +1027,7 @@ const RM = (function () {
     if (!card) {
       if (!s.warned) {
         s.warned = true;
-        toast(s, "Resources: story cards are unavailable. Enable Gameplay → Memory System → Memory Bank.");
+        toast(s, "Living Meters: story cards are unavailable. Enable Gameplay > Memory System > Memory Bank.");
       }
       return;
     }
@@ -1082,7 +1082,7 @@ const RM = (function () {
     if (cmd === "reset") {
       for (const d of defs()) setVal(s, d.id, d.start);
       s.band = {};
-      return "Resources reset.\n\n" + statusBlock(s);
+      return "Meters reset.\n\n" + statusBlock(s);
     }
 
     // "<id> +10" / "<id> -5" / "<id> =80" / "<id>" to query one
@@ -1091,7 +1091,7 @@ const RM = (function () {
       const arg = parts[1];
       if (!arg) {
         const e = eff(s, d);
-        return `${e.label}: ${Math.round(s.res[d.id])}/${Math.round(e.max)} (${bandOf(e, s.res[d.id]).name || "—"})`;
+        return `${e.label}: ${Math.round(s.res[d.id])}/${Math.round(e.max)} (${bandOf(e, s.res[d.id]).name || "-"})`;
       }
       const m = arg.match(/^([+\-=])?(\d+(?:\.\d+)?)$/);
       if (!m) return `Could not read "${arg}". Try ${p}${cmd} +10`;

@@ -517,12 +517,18 @@ It runs each hook in a throwaway `<iframe>`, whose `contentWindow` is a genuinel
 is the closest a browser gets to AI Dungeon's fresh isolate per hook, and it means `const RM_CONFIG`
 cannot collide between runs.
 
-Scheduling and analysis live in `docs/engine.js`, which **both** the browser page and
-`playthrough.js` import, so the two cannot drift apart and report different things about the same
-config.
+**Both tools are there.** *Run tuning* gives you the simulated run and tuning report. *Run tests*
+gives you the full correctness suite, the same 57 checks `node test-harness.js` runs.
 
-The browser version covers tuning only. For the correctness tests you still want
-`node test-harness.js`, which needs Node because it drives the hooks in ways a page cannot.
+Nothing is duplicated to make that work. `docs/engine.js` holds the scheduling and analysis, and
+`docs/tests.js` holds every assertion. The browser page and the two CLI scripts all import them, so
+they cannot drift apart and report different things about the same config. The only difference is
+how a hook is sandboxed: a Node `vm` context on the command line, a throwaway iframe in the page.
+
+The test suite makes around **370 sandbox runs**, which means 370 iframes, so it takes a few seconds
+and the tab is busy while it works. The CLI is faster if you have Node. The page asserts a looser
+per-hook time budget (1500 ms rather than 500 ms) because standing up an iframe costs more than
+entering a `vm` context.
 
 ### How they fake the sandbox
 
@@ -595,8 +601,11 @@ what catches:
   word contains the other (`"recycler"` versus `"recycler failure"`)
 - a trigger that fires twice because its word appears in both the action and the narration
 
-Section 11 builds **synthetic one-resource configs in memory** and runs the real hooks against them,
+Section 11 builds **synthetic one-meter configs in memory** and runs the real hooks against them,
 which is how it can assert on error messages without touching your `library.js`.
+
+The assertions live in `docs/tests.js`, so the same 57 checks run from the
+[browser page](#no-install-run-the-tuning-tool-in-your-browser) with no Node at all.
 
 ---
 
@@ -722,6 +731,7 @@ Neither replaces playing the scenario. They replace the *first twenty* playtests
 | `test-harness.js` | Correctness tests. Config-driven, so it keeps working when you rewrite `RM_CONFIG` |
 | `playthrough.js` | Tuning tool. Builds a run from your config |
 | `docs/engine.js` | Scheduling and analysis, shared by the CLI and the browser page |
+| `docs/tests.js` | Every correctness assertion, shared by `test-harness.js` and the page |
 | `docs/index.html` | The browser version, served at the GitHub Pages link above |
 | `README.md` | This file |
 | `LICENSE` | MIT |

@@ -68,7 +68,8 @@
       <div><label for="detail">Detail</label>
         <select id="detail"><option value="full">every turn</option><option value="quiet">report only</option></select>
       </div>
-      <button id="run">Run</button>
+      <button id="run">Run tuning</button>
+      <button id="test" class="ghost">Run tests</button>
       <button id="reset" class="ghost">Reload shipped config</button>
       <span class="status" id="status"></span>
     </div>
@@ -84,6 +85,7 @@
 </div>
 
 <script src="engine.js"></script>
+<script src="tests.js"></script>
 <script>
 "use strict";
 const RAW = "https://raw.githubusercontent.com/Oratorian/living-meters/main/library.js";
@@ -128,19 +130,25 @@ function bootstrap(p) {
     '    description: notes === undefined ? ex.description : notes }; }\n';
 }
 
-function sandbox(libSrc, tail, payload) {
+function sandbox(libSrc, tail, payload, opts) {
   const f = document.createElement("iframe");
   f.style.display = "none";
   document.body.appendChild(f);
   try {
     const w = f.contentWindow;
     w.eval(bootstrap(payload));
+    // The degraded-mode test needs story card writes to fail the way they do
+    // when the Memory Bank is switched off.
+    if (opts && opts.breakCards) {
+      w.eval('addStoryCard = function(){ throw new Error("Memory Bank is off"); };');
+    }
     const ret = w.eval(libSrc + "\n\n" + tail);
     return {
       ret: ret,
       state: JSON.parse(w.eval("JSON.stringify(state)")),
       storyCards: JSON.parse(w.eval("JSON.stringify(storyCards)")),
       logs: JSON.parse(w.eval("JSON.stringify(__logs)")),
+      message: JSON.parse(w.eval("JSON.stringify(state && state.message || null)")),
     };
   } finally {
     f.remove();
@@ -393,6 +401,66 @@ $("run").addEventListener("click", function () {
       setStatus("the script threw. See below.", "bad");
     } finally {
       $("run").disabled = false;
+    }
+  }, 20);
+});
+
+// ---- correctness tests -----------------------------------------------------
+
+function renderTests(r) {
+  const L = [];
+  L.push('<span class="b">' + r.meters.length + " meters: " + esc(r.meters.join(", ")) + "</span>");
+  L.push("");
+  for (const sec of r.sections) {
+    L.push('<span class="b">' + esc(sec.name) + "</span>");
+    for (const c of sec.checks) {
+      L.push(c.ok
+        ? '  <span class="ok">ok  </span> ' + esc(c.name)
+        : '  <span class="bad">FAIL</span> ' + esc(c.name) +
+          (c.detail ? '<span class="dim">  -> ' + esc(c.detail) + "</span>" : ""));
+    }
+    L.push("");
+  }
+  const line = "=== " + r.pass + " passed, " + r.fail + " failed ===";
+  L.push('<span class="' + (r.fail ? "bad" : "ok") + ' b">' + line + "</span>" +
+    '<span class="dim">   ' + r.steps + " sandbox runs, worst hook " + r.worstMs + "ms</span>");
+  return L.join("\n");
+}
+
+$("test").addEventListener("click", function () {
+  const src = $("src").value;
+  if (!src.trim()) { setStatus("paste your library.js first.", "warn"); return; }
+
+  $("run").disabled = true;
+  $("test").disabled = true;
+  // The suite makes several hundred sandbox runs back to back and there is no
+  // way to yield between them, so say so rather than looking frozen.
+  setStatus("running ~370 sandbox runs; the tab will be busy for a few seconds...");
+  $("out").classList.remove("on", "err");
+
+  setTimeout(function () {
+    const t0 = performance.now();
+    try {
+      const r = window.LM_TESTS.runTests({
+        lib: src,
+        hooks: HOOKS,
+        run: sandbox,
+        // An iframe is slower to stand up than a Node vm context, so the
+        // per-hook bound is looser here than the 500ms the CLI asserts.
+        perfBudget: 1500,
+      });
+      $("report").innerHTML = renderTests(r);
+      $("out").classList.add("on");
+      if (r.fail) $("out").classList.add("err");
+      setStatus((r.fail ? r.fail + " failed" : "all " + r.pass + " passed") +
+        " in " + Math.round(performance.now() - t0) + " ms", r.fail ? "bad" : "ok");
+    } catch (e) {
+      $("report").innerHTML = '<span class="bad">' + esc((e && e.stack) || e) + "</span>";
+      $("out").classList.add("on", "err");
+      setStatus("the suite threw before finishing. See below.", "bad");
+    } finally {
+      $("run").disabled = false;
+      $("test").disabled = false;
     }
   }, 20);
 });
