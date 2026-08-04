@@ -19,17 +19,27 @@ noir); a completely custom set is about ten lines of config.
 > That is the original working name, kept on purpose: it is short, it collides with nothing, and
 > changing it would invalidate saved adventures for no benefit.
 
-Two development tools come with it. Neither is pasted into AI Dungeon:
+## Try it in your browser
 
-| Tool | Question it answers |
-| --- | --- |
-| `node test-harness.js` | *Is the framework still correct?* |
-| `node playthrough.js` | *Is my scenario tuned?* |
+**<https://oratorian.github.io/living-meters/>**
+
+Paste a config and press a button. **Run tuning** simulates 30 turns and reports what a live
+adventure would take an hour to reveal. **Run tests** runs the full 57-check correctness suite.
+No install, no account, and nothing is uploaded; it all executes in your tab.
+
+Two development tools come with it. Neither is pasted into AI Dungeon, and both are on that page as
+well as on the command line:
+
+| Tool | Question it answers | Without Node |
+| --- | --- | --- |
+| `node test-harness.js` | *Is the framework still correct?* | *Run tests* |
+| `node playthrough.js` | *Is my scenario tuned?* | *Run tuning* |
 
 ---
 
 ## Contents
 
+- [Try it in your browser](#try-it-in-your-browser)
 - [Install](#install)
 - [How it works](#how-it-works) (the mechanism, in detail)
 - [Configuring for the scenario creator](#configuring-for-the-scenario-creator)
@@ -505,13 +515,12 @@ node playthrough.js
 Neither is pasted into AI Dungeon. Both read `library.js`, `input.js`, `context.js` and `output.js`
 straight off disk, so they always test **exactly** what you would paste in.
 
-### No install: run the tuning tool in your browser
+### No install: run either tool in your browser
 
 **<https://oratorian.github.io/living-meters/>**
 
-Paste your `library.js`, press Run, get the same simulated run and tuning report as
-`node playthrough.js`. It loads the shipped config for you, and nothing is uploaded anywhere; the
-whole thing executes in your tab.
+Paste your `library.js` and press **Run tuning** or **Run tests**. It loads the shipped config for
+you, and nothing is uploaded anywhere; the whole thing executes in your tab.
 
 It runs each hook in a throwaway `<iframe>`, whose `contentWindow` is a genuinely fresh global. That
 is the closest a browser gets to AI Dungeon's fresh isolate per hook, and it means `const RM_CONFIG`
@@ -605,7 +614,7 @@ Section 11 builds **synthetic one-meter configs in memory** and runs the real ho
 which is how it can assert on error messages without touching your `library.js`.
 
 The assertions live in `docs/tests.js`, so the same 57 checks run from the
-[browser page](#no-install-run-the-tuning-tool-in-your-browser) with no Node at all.
+[browser page](#try-it-in-your-browser) with no Node at all.
 
 ---
 
