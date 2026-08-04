@@ -711,18 +711,7 @@ Only `library.js` and the three hook files go into AI Dungeon.
 
 ## License
 
-MIT. `SPDX-License-Identifier: MIT`
+License. [MIT](LICENSE)
 
 Use it, change it, ship it in your own scenario, bundle it inside your own script, sell the result.
 Keeping the copyright notice is the only condition.
-
-MIT is the right fit for this specific ecosystem, for three reasons:
-
-- **AI Dungeon scripts are distributed as source, always.** There is no compiled form, so the main
-  protection copyleft offers is already guaranteed by the medium. Nobody can ship a closed fork of
-  something that only exists as pasted JavaScript.
-- **Bundling is how scripts spread here.** The convention is to paste several libraries into one
-  Library tab; Hashtag-DnD ships Auto-Cards verbatim that way. A restrictive license blocks the
-  primary adoption path for a piece of infrastructure like this one.
-- **The whole ecosystem is MIT.** Auto-Cards, Inner Self, Hashtag-DnD and aidungeon.js are all MIT,
-  so MIT keeps Living Meters compatible with everything a creator might already have installed.
