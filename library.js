@@ -46,7 +46,7 @@ globalThis.info ??= {};
 
 const RM_CONFIG = {
   // Start from a preset, then add or override resources below.
-  // "survival" | "fantasy" | "scifi" | "noir" | "none"
+  // "survival" | "fantasy" | "scifi" | "noir" | "mechanic" | "none" |
   // If preset is "none", no resources are added by default and the preset section is ignored.
   // You must then define all resources and triggers you want in the "resources" array below.
   preset: "none",
@@ -485,6 +485,172 @@ const RM_PRESETS = {
       ],
       triggers: [
         { on: "output", words: ["clue", "clues", "testimony", "confess*", "evidence", "new lead", "fresh lead"], delta: 1 },
+      ],
+    },
+  ],
+  // ==========================================================================
+  // MECHANIC — a machine you have to keep alive.
+  //
+  // Written for long-haul trucking but it fits any scenario where the vehicle
+  // is a character: haulage, a road trip in a dying van, a rally, a convoy.
+  //
+  // The design intent is that almost nothing here fails on its own. It fails
+  // because of what you did two hours ago. Climbing a grade burns diesel AND
+  // cooks the coolant. Coming down the far side costs brakes, and standing on
+  // the service brakes instead of gearing down costs three times as much.
+  // Repairs cost money you only get by delivering, and delivering costs hours
+  // you only get back by stopping for the night.
+  //
+  // Watch how "grade", "brake job" and "shut down" each appear on several
+  // resources at once. That is how one narrated moment moves three numbers.
+  // ==========================================================================
+  mechanic: [
+    {
+      id: "engine", label: "Engine", icon: "🔧",
+      // Wears very slowly with distance even when nothing goes wrong, which is
+      // what stops a well-maintained truck from simply sitting at 100 forever.
+      min: 0, max: 100, start: 82, perTurn: -0.2,
+      bands: [
+        { upTo: 0, name: "seized", tell: "The engine is dead. It will not turn over, it will not be coaxed back, and the vehicle is going nowhere without a tow. Treat this as final." },
+        { upTo: 25, name: "failing", tell: "The engine is failing. It misfires, loses power on any incline, and something metallic is knocking down there. The character expects it to let go at any moment." },
+        { upTo: 60, name: "rough", tell: "The engine runs rough. It smokes on startup, hesitates under load, and the character has learned which noises to ignore and which to worry about." },
+        { upTo: 100, name: "sound", tell: "" },
+      ],
+      triggers: [
+        { on: "output", words: ["blown gasket", "head gasket", "threw a rod", "turbo failure", "limp mode", "check engine", "engine light", "knocking", "seiz*"], delta: -22 },
+        { on: "both", words: ["overhaul*", "rebuild the engine", "mechanic", "repair shop", "service the truck", "new turbo", "top up the oil", "oil change"], delta: 32 },
+        // Abuse it and it remembers. "money shift" is a missed downshift at
+        // speed, which is exactly the sort of thing a driver does once.
+        { on: "both", words: ["redlin*", "over-rev*", "float the gears", "money shift", "ride the clutch"], delta: -9 },
+      ],
+    },
+    {
+      id: "fuel", label: "Diesel", icon: "⛽",
+      min: 0, max: 100, start: 55, perTurn: -2.2,
+      bands: [
+        { upTo: 0, name: "dry", tell: "The tanks are dry. The engine has coughed itself quiet and the vehicle is coasting to the shoulder on momentum alone." },
+        { upTo: 12, name: "fumes", tell: "The fuel gauge is below the peg and the low-fuel light has been on long enough that the character has stopped looking at it. Every exit sign matters now." },
+        { upTo: 32, name: "low", tell: "Fuel is low. The character is doing arithmetic about the next fuel stop instead of paying attention to the road." },
+        { upTo: 100, name: "ok", tell: "" },
+      ],
+      triggers: [
+        { on: "both", words: ["fuel island", "fuel up", "fuel stop", "fill the tanks", "top off the tanks", "refuel*", "diesel pump"], delta: 58 },
+        { on: "both", words: ["grade", "climb*", "long pull", "mountain pass", "hammer down", "open her up"], delta: -7 },
+        { on: "both", words: ["idle", "idles", "idling", "idled"], delta: -3 },
+      ],
+    },
+    {
+      id: "temp", label: "Coolant", icon: "🌡️",
+      // Inverted: HIGH is bad. Note the min is 160, not 0 — this is a gauge in
+      // degrees, and a running engine has a floor it never drops below. It
+      // sheds heat on its own every turn, so heat is a debt, not a wound.
+      min: 160, max: 260, start: 190, perTurn: -3,
+      bands: [
+        { upTo: 205, name: "normal", tell: "" },
+        { upTo: 232, name: "hot", tell: "The temperature gauge is well above normal and still climbing. The character keeps glancing at it, and the heater is on full with the windows down to pull heat off the engine." },
+        { upTo: 260, name: "overheating", tell: "The engine is overheating badly. Steam, an alarm, the smell of hot coolant. Pushing on from here does permanent damage and the character knows it." },
+      ],
+      triggers: [
+        { on: "both", words: ["grade", "climb*", "long pull", "mountain pass", "heavy load", "overweight", "air conditioning", "towing"], delta: 19 },
+        { on: "both", words: ["pull over", "shut down", "shut it down", "let her cool", "let it cool", "coolant", "radiator", "downshift*", "idle down"], delta: -26 },
+        { on: "output", words: ["overheat*", "steam", "boiled over", "boiling over", "temperature alarm", "coolant leak"], delta: 21 },
+      ],
+    },
+    {
+      id: "tires", label: "Tires", icon: "🛞",
+      min: 0, max: 100, start: 70, perTurn: -0.4,
+      bands: [
+        { upTo: 0, name: "blown", tell: "A tire is gone, running on the casing or the rim. The vehicle pulls hard to one side and cannot be driven any distance like this." },
+        { upTo: 20, name: "bald", tell: "The tires are down to the cords. They slip on anything wet and the character takes corners like the road is made of glass." },
+        { upTo: 55, name: "worn", tell: "The tires are worn thin and uneven. The character can hear them and does not like the sound." },
+        { upTo: 100, name: "good", tell: "" },
+      ],
+      triggers: [
+        { on: "output", words: ["blowout", "blew a tire", "tire blew", "flat tire", "gator", "shredded", "tread separat*"], delta: -38 },
+        { on: "both", words: ["new tires", "retread*", "tire shop", "change the tire", "swap the tire", "air up the tires", "check the pressure"], delta: 46 },
+        { on: "both", words: ["pothole*", "washboard", "rough road", "construction zone", "gravel", "curb", "curbed"], delta: -7 },
+      ],
+    },
+    {
+      id: "brakes", label: "Brakes", icon: "🛑",
+      min: 0, max: 100, start: 78, perTurn: -0.3,
+      bands: [
+        { upTo: 0, name: "gone", tell: "The brakes are gone. The pedal goes to the floor. The character is looking for a runaway ramp, a rising shoulder, anything that will take speed off without stopping the vehicle in pieces." },
+        { upTo: 22, name: "fading", tell: "The brakes are nearly gone and they smell like it. They fade after one hard application and the character is downshifting for everything instead." },
+        { upTo: 55, name: "worn", tell: "The brakes are soft and pull to one side. The character leaves a lot more room than they used to." },
+        { upTo: 100, name: "good", tell: "" },
+      ],
+      triggers: [
+        // The descent itself always costs a little. How it is driven costs the
+        // rest: standing on the service brakes is what actually kills them.
+        { on: "both", words: ["downgrade", "steep grade", "down the mountain", "descend*"], delta: -8 },
+        { on: "both", words: ["hard on the brakes", "brake hard", "braked hard", "panic stop", "stood on the brakes", "rode the brakes"], delta: -16 },
+        // The whole point of the preset in one line: doing it the right way
+        // does not repair anything, it just costs you less. Both this and the
+        // descent fire on the same turn, so a jake-braked grade is -2, not -8.
+        //
+        // Honest caveat: triggers have no conditions, so narrating an engine
+        // brake on flat ground credits you 6 you did not really earn. Keep this
+        // delta small for that reason, or delete it if your players game it.
+        { on: "both", words: ["jake brake", "engine brake", "compression brake", "low gear", "geared down", "gear down"], delta: 6 },
+        { on: "both", words: ["brake job", "new pads", "new shoes", "slack adjuster", "adjust the brakes", "brake shop"], delta: 42 },
+      ],
+    },
+    {
+      id: "hos", label: "Drive Time", icon: "⏱️",
+      // Legal driving hours left in the day. Half an hour per turn. This is the
+      // meter that makes the scenario a job rather than a drive: it is the only
+      // one you cannot fix with money, and stopping to fix it costs a night.
+      min: 0, max: 11, start: 11, perTurn: -0.5,
+      bands: [
+        { upTo: 0, name: "out of hours", tell: "The character is out of legal driving hours. Every mile from here is a violation they will have to answer for, and the pressure to find somewhere legal to park is immediate and constant." },
+        { upTo: 1, name: "final hour", tell: "Less than an hour of legal drive time is left, and the truck stops fill up long before dark. The character is weighing distance against a place to sleep." },
+        { upTo: 3, name: "running short", tell: "Drive time is running short. The character is doing the maths on whether this run makes it before the clock does." },
+        { upTo: 11, name: "legal", tell: "" },
+      ],
+      triggers: [
+        { on: "both", words: ["ten hour break", "10 hour break", "shut down for the night", "park for the night", "sleeper berth", "reset the clock", "34 hour"], delta: 11 },
+        // Buys you time and nothing else. If you add a DOT-attention meter,
+        // put these same words on it with a large positive delta.
+        { on: "both", words: ["fudge the log", "run illegal", "yellow log", "off the books"], delta: 3 },
+      ],
+    },
+    {
+      id: "alert", label: "Alertness", icon: "☕",
+      // Drains fast enough that fatigue arrives on its own, without needing a
+      // trigger to cause it: "tired" by about turn 12, "exhausted" by turn 24.
+      // This is the one meter that should degrade whether or not anything
+      // interesting happens, because that is what a long day in a seat is.
+      min: 0, max: 100, start: 80, perTurn: -2.4,
+      bands: [
+        { upTo: 0, name: "microsleeping", tell: "The character is falling asleep at the wheel. They are losing seconds of road at a time and coming back to a lane they do not remember choosing. Narrate this as the emergency it is." },
+        { upTo: 22, name: "exhausted", tell: "The character is dangerously tired. Their reactions are slow, their eyes keep closing, and they are arguing with themselves about stopping." },
+        { upTo: 50, name: "tired", tell: "The character is tired. Their attention drifts and they have to work to keep it on the road." },
+        { upTo: 100, name: "sharp", tell: "" },
+      ],
+      triggers: [
+        // "rest" is safe as a bare word: matching respects word boundaries, so
+        // it will not fire on "restaurant" or "arrest".
+        { on: "both", words: ["sleep", "slept", "sleeping", "nap", "napped", "rest", "rested", "sleeper berth", "shut down for the night"], delta: 58 },
+        { on: "both", words: ["coffee", "caffeine", "energy drink", "black coffee"], delta: 15 },
+        { on: "both", words: ["drove through the night", "drive through the night", "push through", "pushed through", "white line fever", "one more hour"], delta: -19 },
+      ],
+    },
+    {
+      id: "cash", label: "Settlement", icon: "💵",
+      // Starts at roughly one fill plus one repair. Tight on purpose: the
+      // maintenance decisions only matter if you cannot afford all of them.
+      min: 0, max: 99999, start: 1400, perTurn: 0,
+      bands: [
+        { upTo: 0, name: "broke", tell: "The character has no money at all. The fuel card is declined, the shop will not start work, and there is nothing to eat that is not already in the cab." },
+        { upTo: 250, name: "tight", tell: "Money is tight enough that the character is choosing between fuel and repairs, and putting off the repair." },
+        { upTo: 99999, name: "ok", tell: "" },
+      ],
+      triggers: [
+        { on: "both", words: ["deliver*", "unload*", "drop the trailer", "bill of lading", "got paid", "settlement", "signed for the load"], delta: 2200 },
+        { on: "both", words: ["mechanic", "repair shop", "brake job", "new tires", "overhaul*", "towed", "tow truck"], delta: -680 },
+        { on: "both", words: ["fuel island", "fuel up", "fill the tanks", "refuel*"], delta: -410 },
+        { on: "output", words: ["ticket", "citation", "fined", "out of service", "violation"], delta: -900 },
       ],
     },
   ],

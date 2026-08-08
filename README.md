@@ -12,8 +12,8 @@ The meters are *living* because they move on their own. That is the difference b
 static stat sheet.
 
 It is deliberately story-agnostic. A meter is just **a number with a range, a per-turn drift, some
-narrative bands, and some word triggers**. Four presets ship in the box (survival, fantasy, sci-fi,
-noir); a completely custom set is about ten lines of config.
+narrative bands, and some word triggers**. Five presets ship in the box (survival, fantasy, sci-fi,
+noir, mechanic); a completely custom set is about ten lines of config.
 
 > The code namespace is `RM` / `RM_CONFIG` / `RM_PRESETS` and the saved state lives at `state.RM`.
 > That is the original working name, kept on purpose: it is short, it collides with nothing, and
@@ -24,7 +24,7 @@ noir); a completely custom set is about ten lines of config.
 **<https://oratorian.github.io/living-meters/>**
 
 Paste a config and press a button. **Run tuning** simulates 30 turns and reports what a live
-adventure would take an hour to reveal. **Run tests** runs the full 57-check correctness suite.
+adventure would take an hour to reveal. **Run tests** runs the full 59-check correctness suite.
 No install, no account, and nothing is uploaded; it all executes in your tab.
 
 Two development tools come with it. Neither is pasted into AI Dungeon, and both are on that page as
@@ -319,7 +319,7 @@ Everything lives in `RM_CONFIG` at the top of `library.js`.
 ### Pick a preset
 
 ```js
-preset: "survival",   // "survival" | "fantasy" | "scifi" | "noir" | "none"
+preset: "survival",   // "survival" | "fantasy" | "scifi" | "noir" | "mechanic" | "none"
 ```
 
 | Preset | Resources |
@@ -328,9 +328,20 @@ preset: "survival",   // "survival" | "fantasy" | "scifi" | "noir" | "none"
 | `fantasy` | Health, Mana, Coin |
 | `scifi` | Integrity, Oxygen, Power |
 | `noir` | Condition, Heat, Leads |
+| `mechanic` | Engine, Diesel, Coolant, Tires, Brakes, Drive Time, Alertness, Settlement |
 | `none` | nothing; define your own |
 
 Preview one without committing: `node playthrough.js 40 --preset noir`.
+
+**`mechanic` is the worked example of interlocking.** It was written for long-haul trucking
+but fits anything where the vehicle is a character. The other presets are mostly independent
+meters; this one is deliberately not. Climbing a grade burns diesel *and* raises coolant temp.
+Coming down the far side costs brakes, and standing on the service brakes instead of gearing
+down costs three times as much. Repairs cost money you only earn by delivering, and delivering
+costs the legal drive time you only get back by stopping for the night. Two details in it are
+worth copying: `temp` is inverted with a `min` of **160**, because a gauge in degrees has a
+floor that is not zero, and `hos` runs 0 to 11 because a legal day is eleven hours, not a
+percentage.
 
 ### Add or override resources
 
@@ -527,7 +538,7 @@ is the closest a browser gets to AI Dungeon's fresh isolate per hook, and it mea
 cannot collide between runs.
 
 **Both tools are there.** *Run tuning* gives you the simulated run and tuning report. *Run tests*
-gives you the full correctness suite, the same 57 checks `node test-harness.js` runs.
+gives you the full correctness suite, the same 59 checks `node test-harness.js` runs.
 
 Nothing is duplicated to make that work. `docs/engine.js` holds the scheduling and analysis, and
 `docs/tests.js` holds every assertion. The browser page and the two CLI scripts all import them, so
@@ -579,7 +590,7 @@ configured: 12 resources: hull, power, fuel, heat, o2, food, water, hp, rads, mo
 0. config
   ok   config has no problems
   ...
-=== 57 passed, 0 failed ===
+=== 59 passed, 0 failed ===
 ```
 
 **What each section covers:**
@@ -596,7 +607,7 @@ configured: 12 resources: hull, power, fuel, heat, o2, food, water, hp, rads, mo
 | 7. clamping and bands | Values clamp at `min` and `max`; the worst band's `tell` actually reaches the AI |
 | 8. state hygiene | State survives a JSON round-trip, stays small, and contains no compiled patterns |
 | 9. degraded mode | With `addStoryCard` throwing (Memory Bank off), the turn still completes and the player is warned |
-| 10. presets | All five presets load and track the expected number of resources |
+| 10. presets | All six presets load and track the expected number of resources |
 | 11. trigger word lists | `word*` suffixes, whole-word boundaries, phrases, escaped punctuation, and every config-error message |
 | 12. performance | 25 turns of realistic load stay far under the 2-second budget and the state stays small |
 
@@ -613,7 +624,7 @@ what catches:
 Section 11 builds **synthetic one-meter configs in memory** and runs the real hooks against them,
 which is how it can assert on error messages without touching your `library.js`.
 
-The assertions live in `docs/tests.js`, so the same 57 checks run from the
+The assertions live in `docs/tests.js`, so the same 59 checks run from the
 [browser page](#try-it-in-your-browser) with no Node at all.
 
 ---

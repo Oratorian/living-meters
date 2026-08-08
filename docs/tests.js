@@ -266,7 +266,14 @@
       world.actionCount += 1;
       runHook("context", "ctx", { actionCount: world.actionCount, maxChars: 8000, characterNames: [] });
       runHook("output", line, { actionCount: world.actionCount, characterNames: [] });
-      check("identical output is not re-scanned", res(hazard.id) === after,
+      // The context hook above advances the turn, so one drift tick is expected.
+      // The point of the check is that the -delta trigger did NOT fire a second
+      // time, which is a far larger move than perTurn. Comparing against zero
+      // only ever passed because every shipped preset happened to put its
+      // output hazard on a perTurn: 0 meter.
+      const tick = Math.abs(hazard.perTurn || 0);
+      check("identical output is not re-scanned",
+        Math.abs(res(hazard.id) - after) <= tick + 0.001,
         after + " to " + res(hazard.id));
     } else check("no output hazard configured (skipped)", true);
 
@@ -353,7 +360,7 @@
 
     // ---- 10. presets -------------------------------------------------------
     section("10. presets");
-    const PRESETS = ["survival", "fantasy", "scifi", "noir", "none"];
+    const PRESETS = ["survival", "fantasy", "scifi", "noir", "mechanic", "none"];
     for (const name of PRESETS) {
       const src = LIB
         .replace(/preset:\s*"[a-z]+"/, 'preset: "' + name + '"')
