@@ -47,8 +47,10 @@ globalThis.info ??= {};
 const RM_CONFIG = {
   // Start from a preset, then add or override resources below.
   // "survival" | "fantasy" | "scifi" | "noir" | "mechanic" | "none" |
+
   // If preset is "none", no resources are added by default and the preset section is ignored.
   // You must then define all resources and triggers you want in the "resources" array below.
+  // Starting from line 77 and ending on line 261
   preset: "none",
 
   // Resources defined here are MERGED over the preset, matched by `id`.
