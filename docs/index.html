@@ -28,6 +28,12 @@
   input[type=number], select { background:var(--bg); color:var(--fg); border:1px solid var(--line);
              border-radius:7px; padding:7px 9px; font:14px inherit; }
   input[type=number] { width:88px; }
+  details.panel > summary { cursor:pointer; font-size:13px; color:var(--dim); list-style:none; }
+  details.panel > summary::-webkit-details-marker { display:none; }
+  details.panel > summary::before { content:"\25b8  "; }
+  details.panel[open] > summary::before { content:"\25be  "; }
+  .hooksrc { height:64px; margin-bottom:10px; }
+  .hint { color:var(--dim); font-size:12.5px; margin:12px 0; }
   button { background:var(--acc); color:#fff; border:0; border-radius:7px; padding:9px 20px;
            font:600 14px inherit; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
@@ -79,6 +85,26 @@
     </div>
   </div>
 
+  <details class="panel" id="hookpanel">
+    <summary>Hook tabs <span class="b">&mdash; edit these if your library.js is more than the framework</span></summary>
+    <p class="hint">
+      These are the Input, Context and Output tabs the sandbox runs, and they default to the
+      stock Living Meters ones. If your <code>library.js</code> adds a system of its own beside
+      <code>RM</code>, add its calls here too, or the run will quietly cover a different
+      scenario than the one you installed. Edits are remembered in this browser.
+    </p>
+    <label for="hook-input">Input tab</label>
+    <textarea id="hook-input" class="hooksrc" spellcheck="false"></textarea>
+    <label for="hook-context">Context tab</label>
+    <textarea id="hook-context" class="hooksrc" spellcheck="false"></textarea>
+    <label for="hook-output">Output tab</label>
+    <textarea id="hook-output" class="hooksrc" spellcheck="false"></textarea>
+    <div class="controls">
+      <button id="hookreset" class="ghost">Reset to the stock tabs</button>
+      <span class="status" id="hookstatus"></span>
+    </div>
+  </details>
+
   <div class="panel out" id="out"><pre id="report"></pre></div>
 
   <p class="foot">
@@ -94,12 +120,17 @@
 "use strict";
 const RAW = "https://raw.githubusercontent.com/Oratorian/living-meters/main/library.js";
 
-// The three hook tabs are fixed boilerplate; only library.js is worth editing.
-const HOOKS = {
+// The stock hook tabs. They are only defaults now: a library.js that adds a
+// system of its own needs that system called from the tabs too, so the panel
+// under the report lets you edit all three. See currentHooks().
+const DEFAULT_HOOKS = {
   input:   'const modifier = (text) => { text = RM.input(text); return { text }; };\nmodifier(text);',
   context: 'const modifier = (text) => { [text, stop] = RM.context(text, stop); return { text, stop }; };\nmodifier(text);',
   output:  'const modifier = (text) => { text = RM.output(text); return { text }; };\nmodifier(text);',
 };
+
+const HOOK_IDS = { input: "hook-input", context: "hook-context", output: "hook-output" };
+const HOOK_STORE = "lm.hooks.v1";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
@@ -168,6 +199,10 @@ function inspect(libSrc, expr) {
 
 // ---- driver ----------------------------------------------------------------
 
+// Set once per run so a mid-run edit of the textareas cannot change the tabs
+// under a run that is already going.
+let RUN_HOOKS = DEFAULT_HOOKS;
+
 function runAll(libSrc, turns, seed, detail) {
   const E = window.LM_ENGINE;
   const defs = inspect(libSrc, "RM.defs()").filter((d) => d.enabled);
@@ -196,7 +231,7 @@ function runAll(libSrc, turns, seed, detail) {
 
   function step(hook, text, info) {
     const t0 = performance.now();
-    const r = sandbox(libSrc, HOOKS[hook], {
+    const r = sandbox(libSrc, RUN_HOOKS[hook], {
       text: text, state: world.state, storyCards: world.storyCards,
       history: world.history, info: info,
     });
@@ -354,6 +389,86 @@ function render(r, turns) {
   return L.join("\n");
 }
 
+// ---- hook tabs -------------------------------------------------------------
+
+function setHookFields(h) {
+  for (const k in HOOK_IDS) $(HOOK_IDS[k]).value = h[k];
+}
+
+// Blank field means "use the stock tab", so emptying one is never fatal.
+function currentHooks() {
+  const out = {};
+  for (const k in HOOK_IDS) {
+    const v = $(HOOK_IDS[k]).value.trim();
+    out[k] = v || DEFAULT_HOOKS[k];
+  }
+  return out;
+}
+
+function hooksAreCustom(h) {
+  return Object.keys(HOOK_IDS).some((k) => h[k] !== DEFAULT_HOOKS[k]);
+}
+
+function saveHooks() {
+  const h = currentHooks();
+  const custom = hooksAreCustom(h);
+  $("hookstatus").innerHTML = custom ? '<span class="warn">using custom tabs</span>' : "";
+  // Storage can be blocked (private mode, file://). The fields still work for
+  // this run, so a failure here is not worth interrupting anyone over.
+  try {
+    if (custom) localStorage.setItem(HOOK_STORE, JSON.stringify(h));
+    else localStorage.removeItem(HOOK_STORE);
+  } catch (e) { /* ignore */ }
+}
+
+function loadHooks() {
+  let h = DEFAULT_HOOKS;
+  try {
+    const raw = localStorage.getItem(HOOK_STORE);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === "object") {
+      h = {};
+      for (const k in HOOK_IDS) {
+        h[k] = (typeof parsed[k] === "string" && parsed[k].trim()) ? parsed[k] : DEFAULT_HOOKS[k];
+      }
+    }
+  } catch (e) { h = DEFAULT_HOOKS; }
+  setHookFields(h);
+  if (hooksAreCustom(h)) $("hookpanel").open = true;
+  saveHooks();
+}
+
+// A library.js may define systems of its own beside RM. If no hook tab calls
+// one, the sandbox runs without it and the report describes a scenario nobody
+// is playing, which is worse than no report at all. Flag it instead.
+const SUBSYSTEM_RE = /^(?:const|let|var)\s+([A-Z][A-Za-z0-9_]*)\s*=|^function\s+([A-Z][A-Za-z0-9_]*)\s*\(|^globalThis\.([A-Za-z_][A-Za-z0-9_]*)\s*=/gm;
+const HOOK_KNOWN = { RM: 1, RM_CONFIG: 1, RM_PRESETS: 1 };
+
+function unreferencedSystems(libSrc, hooks) {
+  const joined = hooks.input + "\n" + hooks.context + "\n" + hooks.output;
+  const seen = Object.create(null);
+  const out = [];
+  let m;
+  SUBSYSTEM_RE.lastIndex = 0;
+  while ((m = SUBSYSTEM_RE.exec(libSrc))) {
+    const name = m[1] || m[2] || m[3];
+    // SCREAMING_CASE is a config object, not a system that needs a hook call.
+    if (HOOK_KNOWN[name] || /^[A-Z][A-Z0-9_]*$/.test(name) || seen[name]) continue;
+    seen[name] = 1;
+    if (!new RegExp("\\b" + name + "\\b").test(joined)) out.push(name);
+  }
+  return out;
+}
+
+function noticeHtml(names) {
+  if (!names.length) return "";
+  const list = names.map((n) => "<code>" + esc(n) + "</code>").join(", ");
+  return '<span class="warn">' + list + (names.length > 1 ? " are" : " is") +
+    " defined in library.js but never called from the hook tabs, so this run does not" +
+    " cover " + (names.length > 1 ? "them" : "it") +
+    ". Add the calls in the hook tabs panel above.</span>\n\n";
+}
+
 // ---- wiring ----------------------------------------------------------------
 
 function setStatus(msg, cls) { $("status").innerHTML = cls ? '<span class="' + cls + '">' + esc(msg) + "</span>" : esc(msg); }
@@ -386,6 +501,9 @@ $("run").addEventListener("click", function () {
   const seed = Math.max(1, parseInt($("seed").value, 10) || 1);
   const detail = $("detail").value;
 
+  RUN_HOOKS = currentHooks();
+  const orphans = unreferencedSystems(src, RUN_HOOKS);
+
   $("run").disabled = true;
   setStatus("running " + turns + " turns...");
   $("out").classList.remove("on", "err");
@@ -396,7 +514,7 @@ $("run").addEventListener("click", function () {
     const t0 = performance.now();
     try {
       const r = runAll(src, turns, seed, detail);
-      $("report").innerHTML = render(r, turns);
+      $("report").innerHTML = noticeHtml(orphans) + render(r, turns);
       $("out").classList.add("on");
       setStatus("done in " + Math.round(performance.now() - t0) + " ms", "dim");
     } catch (e) {
@@ -435,6 +553,9 @@ $("test").addEventListener("click", function () {
   const src = $("src").value;
   if (!src.trim()) { setStatus("paste your library.js first.", "warn"); return; }
 
+  RUN_HOOKS = currentHooks();
+  const orphans = unreferencedSystems(src, RUN_HOOKS);
+
   $("run").disabled = true;
   $("test").disabled = true;
   // The suite makes several hundred sandbox runs back to back and there is no
@@ -447,13 +568,13 @@ $("test").addEventListener("click", function () {
     try {
       const r = window.LM_TESTS.runTests({
         lib: src,
-        hooks: HOOKS,
+        hooks: RUN_HOOKS,
         run: sandbox,
         // An iframe is slower to stand up than a Node vm context, so the
         // per-hook bound is looser here than the 500ms the CLI asserts.
         perfBudget: 1500,
       });
-      $("report").innerHTML = renderTests(r);
+      $("report").innerHTML = noticeHtml(orphans) + renderTests(r);
       $("out").classList.add("on");
       if (r.fail) $("out").classList.add("err");
       setStatus((r.fail ? r.fail + " failed" : "all " + r.pass + " passed") +
@@ -470,6 +591,14 @@ $("test").addEventListener("click", function () {
 });
 
 $("reset").addEventListener("click", loadShipped);
+
+for (const k in HOOK_IDS) $(HOOK_IDS[k]).addEventListener("input", saveHooks);
+$("hookreset").addEventListener("click", function () {
+  setHookFields(DEFAULT_HOOKS);
+  saveHooks();
+});
+
+loadHooks();
 loadShipped();
 </script>
 </body>
