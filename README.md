@@ -507,7 +507,15 @@ RM.line()               // one-line summary
 RM.directive()          // exactly what the AI is being told this turn
 RM.defs()               // effective definitions after player overrides (JSON-safe)
 RM.problems()           // config problems found at load
+RM.toast("Skill +1")    // queue a toast through RM's buffer
 ```
+
+**Use `RM.toast()` rather than assigning `state.message` yourself.** `state.message` is one global
+slot with no ownership protocol, so the framework only overwrites what it recognises as its own and
+yields otherwise. That politeness has a cost for you: assign the slot directly and the framework
+steps aside, taking any band announcement on that turn with it. Because the band is already recorded
+as announced, it never comes back. `RM.toast()` puts your line in the same buffer, so both are
+flushed together. Call it before `RM.input` / `RM.context` in the same hook.
 
 `RM.defs()` and `RM.problems()` are what make both development tools config-driven.
 
