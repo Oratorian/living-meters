@@ -1460,6 +1460,14 @@ const RM = (function () {
         };
       });
     },
+    // Queue a toast through RM's own buffer instead of writing state.message
+    // yourself. flushToast stays the single writer, so a scenario add-on's
+    // message and a band announcement on the same turn are joined rather than
+    // one silently losing the slot: assigning state.message directly makes RM
+    // yield, and the band is already recorded as announced, so it never
+    // returns. Call this before RM.input/RM.context in the same hook.
+    toast: (msg) => { toast(null, msg); },
+
     problems: () => { defs(); return PROBLEMS.slice(); },
   };
 })();
