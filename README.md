@@ -540,6 +540,16 @@ cannot collide between runs.
 **Both tools are there.** *Run tuning* gives you the simulated run and tuning report. *Run tests*
 gives you the full correctness suite, the same 59 checks `node test-harness.js` runs.
 
+**Hook tabs.** The page runs the three hook tabs too, and defaults them to the stock ones. If your
+`library.js` is more than the framework, if it adds a system of its own beside `RM`, that system
+needs calling from the tabs or the sandbox runs without it and the report describes a scenario
+nobody is playing. Open the **Hook tabs** panel under the report and add the calls; edits persist in
+your browser, and *Reset to the stock tabs* puts them back. You do not have to remember to check: if
+the pasted `library.js` defines something no tab calls, the run says so at the top of the report.
+
+The CLI tools never needed this. They read your actual `input.js`, `context.js` and `output.js` off
+disk, so whatever you installed is what they run.
+
 Nothing is duplicated to make that work. `docs/engine.js` holds the scheduling and analysis, and
 `docs/tests.js` holds every assertion. The browser page and the two CLI scripts all import them, so
 they cannot drift apart and report different things about the same config. The only difference is
