@@ -860,6 +860,7 @@ const RM = (function () {
       hlen: 0,         // history.length at the last counted turn
       outHash: 0,      // hash of the last output we scanned
       msgPrev: "",     // last toast we wrote, for cooperative state.message
+      msgTurn: -1,     // the turn we wrote it on, so later hooks can add to it
       cardOK: true,    // false once we detect story cards are unavailable
       warned: false,
       pendingStop: false, // a command ran in Input; Context executes the halt
@@ -887,6 +888,7 @@ const RM = (function () {
     if (isNum(raw.hlen)) s.hlen = raw.hlen;
     if (isNum(raw.outHash)) s.outHash = raw.outHash;
     if (typeof raw.msgPrev === "string") s.msgPrev = raw.msgPrev;
+    if (isNum(raw.msgTurn)) s.msgTurn = raw.msgTurn;
     if (typeof raw.cardOK === "boolean") s.cardOK = raw.cardOK;
     if (typeof raw.warned === "boolean") s.warned = raw.warned;
     if (typeof raw.pendingStop === "boolean") s.pendingStop = raw.pendingStop;
@@ -1133,10 +1135,22 @@ const RM = (function () {
     TOASTS = [];
     const current = typeof state.message === "string" ? state.message : "";
     if (current && current !== s.msgPrev) return; // somebody else owns the slot
-    // The client suppresses a toast identical to the previous one; perturb it.
-    const out = current === msg ? msg + " " : msg;
+
+    // The Library re-executes per hook, so every hook flushes its own buffer.
+    // Within one turn, ADD to what we already wrote rather than replacing it.
+    // statusEvery queues its block during Context; without this an Output-hook
+    // band announcement overwrites it and the player never sees the status.
+    let out;
+    if (current && s.msgTurn === s.turn) {
+      if (current.indexOf(msg) !== -1) return;   // already on screen this turn
+      out = current + "\n" + msg;
+    } else {
+      // The client suppresses a toast identical to the previous one; perturb it.
+      out = current === msg ? msg + " " : msg;
+    }
     state.message = out;
     s.msgPrev = out;
+    s.msgTurn = s.turn;
   }
 
   // ---- story card ---------------------------------------------------------
