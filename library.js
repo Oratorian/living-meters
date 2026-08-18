@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: MIT
 
 /* ============================================================================
- * LIVING METERS v1: a resource framework for AI Dungeon
+ * LIVING METERS v1.2.0: a resource framework for AI Dungeon
  *
  * Copyright (c) 2026 Oratorian. MIT licensed; see the LICENSE file.
  * You may bundle this into your own script. Keeping this notice is all that
