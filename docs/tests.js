@@ -291,7 +291,11 @@
     check("halt is one-shot", c3.ret.stop === false, String(c3.ret.stop));
     const c4 = runHook("input", '\n> You say "/status"', { actionCount: world.actionCount, characterNames: [] });
     check("/status lists every meter",
-      CFG.filter((d) => d.visible).every((d) => (c4.message || "").indexOf(d.label) !== -1),
+      // The toast lays rows out with U+00A0 so a wrap cannot land inside one.
+      // Normalise before matching: the label is a real string everywhere it is
+      // an API (defs, directive, statusBlock), and a display artifact only here.
+      CFG.filter((d) => d.visible).every((d) =>
+        (c4.message || "").replace(/\u00a0/g, " ").indexOf(d.label) !== -1),
       (c4.message || "").split("\n")[0]);
     runHook("context", "ctx", { actionCount: world.actionCount, maxChars: 8000, characterNames: [] });
 

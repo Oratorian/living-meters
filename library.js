@@ -1152,7 +1152,7 @@ const RM = (function () {
       const NB = "\u00a0";
       parts.push([
         e.icon || "\u2022",
-        e.label,                      // verbatim: callers match on it
+        e.label.replace(/ /g, NB),    // NBSP: a wrap must not split it
         bar(v, e.min, e.max),
         `${Math.round(v)}/${Math.round(e.max)}` + (b.name ? `${NB}(${b.name})` : ""),
       ].join(NB));
