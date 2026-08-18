@@ -275,6 +275,12 @@ const RM_CONFIG = {
   // Show a toast to the player when a resource crosses into a new band.
   announceBandChanges: true,
 
+  // What separates rows inside a toast. The client collapses whitespace, so a
+  // newline is only a space and a padded block turns into one wrapped
+  // paragraph. A visible marker survives that. If you find a break that does
+  // work in your client, put it here: "\n\n" and "<br>" are the two worth trying.
+  toastSeparator: "   \u00b7   ",
+
   // Show the full status toast every N turns. 0 disables.
   statusEvery: 0,
 
@@ -1129,6 +1135,31 @@ const RM = (function () {
     return rows.join("\n");
   }
 
+  // statusBlock is for the story card, which keeps its whitespace. A toast does
+  // not, so padEnd there is wasted and the columns never line up. This is the
+  // same information laid out to survive being wrapped at any width.
+  function statusToast(s) {
+    const parts = [];
+    for (const e of activeDefs(s)) {
+      if (!e.visible) continue;
+      const v = s.res[e.id];
+      const b = bandOf(e, v);
+      // Non-breaking spaces inside a row, ordinary ones only around the
+      // separator, so a wrap can land BETWEEN rows and never inside one. That
+      // is what stops a short label being stranded from its bar, which is a
+      // single unbreakable token. U+00A0 also survives whitespace collapsing,
+      // unlike the padding this used to rely on.
+      const NB = "\u00a0";
+      parts.push([
+        e.icon || "\u2022",
+        e.label,                      // verbatim: callers match on it
+        bar(v, e.min, e.max),
+        `${Math.round(v)}/${Math.round(e.max)}` + (b.name ? `${NB}(${b.name})` : ""),
+      ].join(NB));
+    }
+    return parts.join(RM_CONFIG.toastSeparator || "   \u00b7   ");
+  }
+
   // What the AI is told. Complete sentences only: an unterminated fragment in
   // frontMemory invites the model to finish it.
   function directive(s) {
@@ -1157,13 +1188,13 @@ const RM = (function () {
   // hook, so this buffer resets by itself each time.
   let TOASTS = [];
 
-  // The client renders the toast as markdown, where a lone newline is only a
-  // space. Without a hard break the status block collapses into one wrapped
-  // paragraph, and because a bar is a single unbreakable token every row's
-  // icon and label end up stranded on the line above. Two trailing spaces is
-  // the standard markdown hard break, and is harmless if the toast turns out
-  // to be plain text after all.
-  const BREAK = "  \n";
+  // A toast cannot hold a line break. The client collapses whitespace, so a
+  // newline renders as a space and the padded status block became one wrapped
+  // paragraph; worse, a bar is a single unbreakable token, so each row's icon
+  // and label fitted at the end of the previous visual line while the bar
+  // wrapped. Rows are separated by a visible marker instead, which survives
+  // wrapping whatever the renderer turns out to be.
+  const BREAK = RM_CONFIG.toastSeparator || "   \u00b7   ";
 
   function toast(s, msg) {
     if (msg && TOASTS.indexOf(msg) === -1) TOASTS.push(msg);
@@ -1337,7 +1368,7 @@ const RM = (function () {
     const cmd = parts[0].toLowerCase();
 
     if (cmd === "help") return helpText();
-    if (cmd === "status") return statusBlock(s) || "No resources are being tracked.";
+    if (cmd === "status") return statusToast(s) || "No resources are being tracked.";
 
     if (cmd === "set") {
       const key = parts[1];
@@ -1369,7 +1400,7 @@ const RM = (function () {
       // is what /reset restores.
       for (const d of defs()) setVal(s, d.id, eff(s, d).start);
       s.band = {};
-      return "Meters reset.\n\n" + statusBlock(s);
+      return "Meters reset. " + statusToast(s);
     }
 
     // "<id> +10" / "<id> -5" / "<id> =80" / "<id>" to query one
@@ -1493,7 +1524,7 @@ const RM = (function () {
         // set this and nothing will ever read it.
         const every = optNum(s, "statusEvery", RM_CONFIG.statusEvery);
         if (every > 0 && s.turn % every === 0) {
-          toast(s, statusBlock(s));
+          toast(s, statusToast(s));
         }
       }
 
@@ -1568,6 +1599,7 @@ const RM = (function () {
     all: () => hydrate().res,
     status: () => statusBlock(hydrate()),
     line: () => statusLine(hydrate()),
+    toastLine: () => statusToast(hydrate()),
     directive: () => directive(hydrate()),
 
     // Effective definitions after player overrides, as plain JSON-safe data.

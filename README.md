@@ -149,10 +149,13 @@ costs only re-parsing.
 | `over` | Player overrides parsed from the story card. |
 | `msgPrev` | The last toast we wrote, for cooperative `state.message` use. |
 
-> The toast is rendered as **markdown**, so a lone newline is only a space. Multi-line toasts are
-> written with a two-space hard break; without it the status block collapses into one wrapped
-> paragraph and, because a bar is an unbreakable token, every row's icon is stranded on the line
-> above.
+> **A toast cannot contain a line break.** The client collapses whitespace, so a newline renders as
+> a space and `padEnd` padding disappears entirely. A markdown hard break (two trailing spaces) was
+> tried in a live game and did not work either. Rows are therefore separated by a visible marker,
+> `RM_CONFIG.toastSeparator`, and joined internally with U+00A0 so a wrap lands between rows rather
+> than inside one. Without that last part a bar, being a single unbreakable token, wraps on its own
+> and strands its icon and label on the line above. If you find a break that does work in your
+> client, put it in `toastSeparator`.
 | `msgOpen` | Whether a flush already happened this generation, so a later hook adds to the message instead of replacing it. |
 | `cardOK` `warned` `cfgWarned` `pendingStop` | Small flags. |
 
