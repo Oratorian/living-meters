@@ -24,7 +24,7 @@ noir, mechanic); a completely custom set is about ten lines of config.
 **<https://oratorian.github.io/living-meters/>**
 
 Paste a config and press a button. **Run tuning** simulates 30 turns and reports what a live
-adventure would take an hour to reveal. **Run tests** runs the full 59-check correctness suite.
+adventure would take an hour to reveal. **Run tests** runs the full 65-check correctness suite.
 No install, no account, and nothing is uploaded; it all executes in your tab.
 
 Two development tools come with it. Neither is pasted into AI Dungeon, and both are on that page as
@@ -148,6 +148,8 @@ costs only re-parsing.
 | `fired` | Trigger keys already counted this turn; the once-per-turn latch. |
 | `over` | Player overrides parsed from the story card. |
 | `msgPrev` | The last toast we wrote, for cooperative `state.message` use. |
+| `msgOpen` | Whether a flush already happened this generation, so a later hook adds to the message instead of replacing it. |
+| `cardOK` `warned` `cfgWarned` `pendingStop` | Small flags. |
 
 > **A toast cannot contain a line break.** The client collapses whitespace, so a newline renders as
 > a space and `padEnd` padding disappears entirely. A markdown hard break (two trailing spaces) was
@@ -156,8 +158,6 @@ costs only re-parsing.
 > than inside one. Without that last part a bar, being a single unbreakable token, wraps on its own
 > and strands its icon and label on the line above. If you find a break that does work in your
 > client, put it in `toastSeparator`.
-| `msgOpen` | Whether a flush already happened this generation, so a later hook adds to the message instead of replacing it. |
-| `cardOK` `warned` `cfgWarned` `pendingStop` | Small flags. |
 
 `state` is **JSON-serialised between turns**, so it holds plain data only. Compiled regexes live in
 the Library and are rebuilt each hook, never stored.
@@ -211,8 +211,8 @@ A word list only asks whether a word is present, which meant every preset paid o
 *"you do not eat"* fed the character and *"you don't drink"* watered them. A trigger word sitting
 in a negated clause is now ignored.
 
-A negator (, , , , , , , , ,
-, , , ) only reaches back to the last clause break,
+A negator (`not`, `n't`, `never`, `cannot`, `refuse`, `decline`, `avoid`, `without`, `instead of`, `rather than`, `unable to`, `fail to`, `decide against`)
+only reaches back to the last clause break,
 so *"It was not a good day. You eat."* still feeds you, and every occurrence is checked, so *"you do
 not eat the berries, then you eat the fish"* does too.
 
@@ -221,8 +221,8 @@ the later items should stay suppressed. It is the better default anyway: getting
 firing, which is what the framework did before the guard existed, while leaving the comma out means
 silently withholding a payout the player earned.
 
-Bare  and  are deliberately not negators. They negate as often as not, but they also appear
-in *"no choice but to eat"*. Set  for the old behaviour.
+Bare `no` and `none` are deliberately not negators. They negate as often as not, but they also appear
+in *"no choice but to eat"*. Set `negationGuard: false` for the old behaviour.
 
 ### Firing rules
 
@@ -592,7 +592,7 @@ is the closest a browser gets to AI Dungeon's fresh isolate per hook, and it mea
 cannot collide between runs.
 
 **Both tools are there.** *Run tuning* gives you the simulated run and tuning report. *Run tests*
-gives you the full correctness suite, the same 59 checks `node test-harness.js` runs.
+gives you the full correctness suite, the same 65 checks `node test-harness.js` runs.
 
 **Hook tabs.** The page runs the three hook tabs too, and defaults them to the stock ones. If your
 `library.js` is more than the framework, if it adds a system of its own beside `RM`, that system
@@ -654,7 +654,7 @@ configured: 12 resources: hull, power, fuel, heat, o2, food, water, hp, rads, mo
 0. config
   ok   config has no problems
   ...
-=== 59 passed, 0 failed ===
+=== 65 passed, 0 failed ===
 ```
 
 **What each section covers:**
@@ -688,7 +688,7 @@ what catches:
 Section 11 builds **synthetic one-meter configs in memory** and runs the real hooks against them,
 which is how it can assert on error messages without touching your `library.js`.
 
-The assertions live in `docs/tests.js`, so the same 59 checks run from the
+The assertions live in `docs/tests.js`, so the same 65 checks run from the
 [browser page](#try-it-in-your-browser) with no Node at all.
 
 ---
