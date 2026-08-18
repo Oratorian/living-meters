@@ -443,7 +443,7 @@ The rest of the script keeps running; only the broken trigger is skipped.
 The script maintains a story card called **⚙️ Living Meters**. Its **NOTES** field is the settings panel;
 its **ENTRY** field is a live read-only dashboard. Neither is ever shown to the AI.
 
-Players edit NOTES with plain lines:
+Players edit NOTES with plain lines, or use `/set` and never open the card at all:
 
 ```text
 difficulty = hard
@@ -455,6 +455,7 @@ warmth.off
 | Form | Effect |
 | --- | --- |
 | `difficulty = easy\|normal\|hard` | Scales every loss |
+| `statusEvery = 5` | Show the full status block every N turns, `0` to disable |
 | `<id>.perTurn = -3` | Change the per-turn drift |
 | `<id>.max = 150` / `<id>.min = 0` | Move the ceiling or floor |
 | `<id>.start = 60` | The value `/reset` restores |
@@ -465,10 +466,18 @@ warmth.off
 breaking the run.
 
 A line whose key is not in that table is **reported to the player once**, naming the key. Silence
-would be worse: the parser accepts any `key = value`, so a case slip like `hp.perturn`, or a
-creator-only setting like `statusEvery`, would otherwise sit in the card being ignored while the
-player waited for it to do something. Fix the line and the warning stops; make a different mistake
-and it raises a fresh one.
+would be worse: the parser accepts any `key = value`, so a case slip like `hp.perturn` would
+otherwise sit in the card being ignored while the player waited for it to do something. Fix the line
+and the warning stops; make a different mistake and it raises a fresh one.
+
+`/set` writes to that same card rather than to `state`, which is not an implementation detail worth
+hiding: `syncCard()` re-parses the card on every hook and replaces the override map, so a command
+that only wrote state would be erased inside the same turn. Keeping the card authoritative means
+`/set` and hand-editing cannot disagree, and the player can always see what they changed.
+
+> Adding a setting to that table is **two** edits, not one. Put the key in `OVER_GLOBALS` or
+> `OVER_FIELDS` so it passes validation, **and** read it through `optNum` at the point of use. Miss
+> the second and the value is parsed, stored, reported as valid, and never read.
 
 ### Commands
 
@@ -477,6 +486,8 @@ and it raises a fresh one.
 | `/status` | Show every tracked resource |
 | `/hp` | Query one resource |
 | `/hp +10` `/hp -5` `/hp =80` | Adjust it (ignores difficulty scaling) |
+| `/set <key> <value>` | Change a setting without opening the card |
+| `/set` | List what you have changed |
 | `/reset` | Restore starting values, including a `start` set in the card |
 | `/help` | List the commands |
 

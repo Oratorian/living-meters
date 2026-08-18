@@ -947,18 +947,21 @@ const RM = (function () {
   // "key = value" line, so without this a typo, or a creator-only setting like
   // statusEvery, is stored forever and silently ignored. That is how a player
   // ends up convinced the card does nothing.
-  const OVER_GLOBALS = ["difficulty"];
+  const OVER_GLOBALS = ["difficulty", "statusEvery"];
   const OVER_FIELDS = ["min", "max", "start", "perTurn", "visible", "enabled"];
 
+  function isOverrideKey(key) {
+    if (OVER_GLOBALS.indexOf(key) !== -1) return true;
+    const dot = key.lastIndexOf(".");
+    if (dot === -1) return false;
+    return defs().some((d) => d.id === key.slice(0, dot))
+      && OVER_FIELDS.indexOf(key.slice(dot + 1)) !== -1;
+  }
+
   function checkOverrides(s) {
-    const ids = defs().map((d) => d.id);
     const bad = [];
     for (const key of Object.keys(s.over)) {
-      if (OVER_GLOBALS.indexOf(key) !== -1) continue;
-      const dot = key.lastIndexOf(".");
-      const id = dot === -1 ? "" : key.slice(0, dot);
-      const field = dot === -1 ? "" : key.slice(dot + 1);
-      if (ids.indexOf(id) !== -1 && OVER_FIELDS.indexOf(field) !== -1) continue;
+      if (isOverrideKey(key)) continue;
       bad.push(key);
     }
     // Keyed on the exact set, so fixing the card stops the warning and a new
@@ -1190,7 +1193,10 @@ const RM = (function () {
     "# Living Meters settings. Edit the lines below, then close this card.",
     "# Lines starting with # are ignored. Delete a line to use the default.",
     "#",
-    "#   difficulty = easy | normal | hard",
+    "# Or use the /set command, e.g.  /set statusEvery 5",
+    "#",
+    "#   difficulty  = easy | normal | hard",
+    "#   statusEvery = 5              show the full status every N turns, 0 = off",
     "#   <resource>.perTurn = -2      how much it drifts each turn",
     "#   <resource>.max     = 120     raise or lower the ceiling",
     "#   <resource>.min     = 10      raise or lower the floor",
@@ -1258,6 +1264,30 @@ const RM = (function () {
     if (card.entry !== next) card.entry = next;
   }
 
+  // ---- writing a setting back to the card ---------------------------------
+
+  // syncCard re-parses the card on every hook and replaces s.over, so a command
+  // that only wrote state would be erased inside the same turn. The card stays
+  // the single source of truth; /set edits it and the player can see the result.
+  function writeSetting(src, key, value) {
+    const text = typeof src === "string" ? src : "";
+    const re = new RegExp("^\\s*" + escapeRe(key) + "\\s*[=:]", "i");
+    const out = [];
+    let done = false;
+    for (const line of text.split("\n")) {
+      if (line.trim().startsWith("#") || !re.test(line)) {
+        out.push(line);
+        continue;
+      }
+      if (done) continue;                  // collapse an existing duplicate
+      out.push(key + " = " + value);
+      done = true;
+    }
+    while (out.length && out[out.length - 1].trim() === "") out.pop();
+    if (!done) out.push(key + " = " + value);
+    return out.join("\n") + "\n";
+  }
+
   // ---- commands -----------------------------------------------------------
 
   function stripPrefix(raw) {
@@ -1277,6 +1307,8 @@ const RM = (function () {
       `${p}<id> +N       add to a resource   (e.g. ${p}hp +10)`,
       `${p}<id> -N       subtract from it`,
       `${p}<id> =N       set it exactly`,
+      `${p}set <k> <v>   change a setting  (e.g. ${p}set statusEvery 5)`,
+      `${p}set           show what you have changed`,
       `${p}reset         restore starting values`,
       `${p}help          this list`,
     ].join("\n");
@@ -1295,6 +1327,31 @@ const RM = (function () {
 
     if (cmd === "help") return helpText();
     if (cmd === "status") return statusBlock(s) || "No resources are being tracked.";
+
+    if (cmd === "set") {
+      const key = parts[1];
+      const value = parts.slice(2).join(" ");
+      if (!key) {
+        const keys = Object.keys(s.over);
+        return keys.length
+          ? "Your settings:\n" + keys.map((k) => k + " = " + s.over[k]).join("\n")
+          : `Nothing changed yet. Try ${p}set statusEvery 5`;
+      }
+      if (!isOverrideKey(key)) {
+        return `"${key}" is not a setting you can change. Try ${p}difficulty, ` +
+          `${p}set statusEvery 5, or ${p}set <resource>.perTurn -2. ${p}help lists the rest.`;
+      }
+      if (!value) return `Usage: ${p}set ${key} <value>`;
+
+      const card = findCard();
+      if (!card) {
+        return "The settings card is not available. Turn on Gameplay > Memory System > Memory Bank.";
+      }
+      card.description = writeSetting(card.description, key, value);
+      s.over = parseOverrides(card.description);
+      s.overWarn = "";                     // a new key may need flagging again
+      return `${key} = ${value}`;
+    }
 
     if (cmd === "reset") {
       // eff() rather than the raw definition, so a start set in the card
@@ -1420,7 +1477,10 @@ const RM = (function () {
       if (turnAdvanced(s)) {
         tick(s);
         announce(s);
-        if (RM_CONFIG.statusEvery > 0 && s.turn % RM_CONFIG.statusEvery === 0) {
+        // Through the overrides, not RM_CONFIG directly, or a player can
+        // set this and nothing will ever read it.
+        const every = optNum(s, "statusEvery", RM_CONFIG.statusEvery);
+        if (every > 0 && s.turn % every === 0) {
           toast(s, statusBlock(s));
         }
       }
