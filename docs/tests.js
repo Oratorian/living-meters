@@ -441,6 +441,35 @@
     check("explicit regex escape hatch still works", r.res.gold === 60, "gold " + r.res.gold);
 
     // ---- 12. performance ---------------------------------------------------
+    // ---- negation guard ----------------------------------------------
+    // Without this a preset pays out for declining: "you do not eat" fed the
+    // character. The guard is clause-bounded, so it must not reach past a
+    // sentence break, and a later un-negated mention must still count.
+    r = withConfig(GOLD(["loot*"], 10), "\n> You search.",
+      "You do not loot the chest.");
+    check("a negated word does not fire", r.res.gold === 50, "gold " + r.res.gold);
+
+    r = withConfig(GOLD(["loot*"], 10), "\n> You search.",
+      "You don't loot the chest.");
+    check("a contraction negates too", r.res.gold === 50, "gold " + r.res.gold);
+
+    r = withConfig(GOLD(["loot*"], 10), "\n> You search.",
+      "You refuse to loot the chest.");
+    check("refuse negates", r.res.gold === 50, "gold " + r.res.gold);
+
+    r = withConfig(GOLD(["loot*"], 10), "\n> You search.",
+      "It was not your day. You loot the chest.");
+    check("a negator does not reach past a sentence break",
+      r.res.gold === 60, "gold " + r.res.gold);
+
+    r = withConfig(GOLD(["loot*"], 10), "\n> You search.",
+      "You do not loot the crate, then you loot the chest.");
+    check("a later un-negated match still fires", r.res.gold === 60, "gold " + r.res.gold);
+
+    r = withConfig(GOLD(["loot*"], 10), "\n> You search.",
+      "You loot the chest.");
+    check("an ordinary sentence is unaffected", r.res.gold === 60, "gold " + r.res.gold);
+
     section("12. performance");
     worstMs = 0;
     for (let i = 0; i < 25; i++) {

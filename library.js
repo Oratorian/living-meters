@@ -297,6 +297,11 @@ const RM_CONFIG = {
   // generation). See README "Why does a command show an error banner?".
   haltOnCommand: true,
 
+  // Ignore a trigger word sitting inside a negated clause, so "you do not
+  // eat" no longer feeds the character. A negator only reaches back to the
+  // last sentence break. Set false for the old behaviour.
+  negationGuard: true,
+
   // Scan player input as well as AI output for trigger matches.
   scanInput: true,
   scanOutput: true,
@@ -729,6 +734,50 @@ const RM = (function () {
     return escapeRe(raw);
   }
 
+  // A trigger word inside a negated clause should not fire. Without this every
+  // preset pays out for declining: "you do not eat" fed the character and "you
+  // don't drink" watered them, because the pattern only asks whether the
+  // word is present anywhere.
+  //
+  // Bare "no" and "none" are deliberately absent. They negate as often as not,
+  // but they also appear in "no choice but to eat", where suppressing would be
+  // wrong, and that phrasing is common in the survival prose these presets are
+  // written for.
+  const NEGATORS = /\bnot\b|n['’]t\b|\bnever\b|\bcannot\b|\brefus\w*|\bdeclin\w*|\bavoid\w*|\bwithout\b|\binstead of\b|\brather than\b|\bunable to\b|\bfail\w* to\b|\bdecid\w* against\b/i;
+
+  // A cap for a very long sentence; the clause bound below usually bites first.
+  const NEG_WINDOW = 80;
+
+  function negated(src, at) {
+    let clause = src.slice(Math.max(0, at - NEG_WINDOW), at);
+    // Keep only what follows the last clause break, so "It was not a good day.
+    // You eat." does not suppress the meal, and neither does "you do not eat the
+    // berries, then you eat the fish".
+    //
+    // A comma counts as a break. That mis-reads a negated list, "you do not eat,
+    // drink, or rest", where the later items should stay suppressed. It is still
+    // the better default: getting a comma wrong means firing, which is exactly
+    // what this framework did before the guard existed, while leaving the comma
+    // out means silently withholding a payout the player earned. Prefer the
+    // error that matches the old behaviour.
+    const cut = clause.search(/[.!?;:,\n][^.!?;:,\n]*$/);
+    if (cut !== -1) clause = clause.slice(cut + 1);
+    return NEGATORS.test(clause);
+  }
+
+  // True if the word appears at least once OUTSIDE a negated clause. Every
+  // occurrence is examined, so "you do not eat the berries, then you eat the
+  // fish" still counts as eating.
+  function fires(re, src) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      if (!RM_CONFIG.negationGuard || !negated(src, m.index)) return true;
+    }
+    return false;
+  }
+
   // Turns a creator's trigger into { on, re, delta }, or records why it can't.
   function compileTrigger(resId, t, index) {
     const where = `${resId} trigger #${index + 1}`;
@@ -753,7 +802,13 @@ const RM = (function () {
         );
         return null;
       }
-      return { on: on, re: t.match, delta: t.delta, words: ["(custom pattern)"] };
+      // Re-flagged with "g" so fires() can walk it. The author's own source
+      // and case sensitivity are preserved.
+      const gflags = t.match.flags.indexOf("g") === -1 ? t.match.flags + "g" : t.match.flags;
+      return {
+        on: on, re: new RegExp(t.match.source, gflags),
+        delta: t.delta, words: ["(custom pattern)"],
+      };
     }
 
     if (!Array.isArray(t.words) || !t.words.length) {
@@ -775,12 +830,13 @@ const RM = (function () {
     // Boundaries on both sides, so "rest" fires on "you rest" but not on
     // "restaurant" or "arrest". \b is not used because it needs a word
     // character to sit against, which breaks entries like "c++" or "o2!".
-    // The leading alternative consumes a character, which is harmless for
-    // .test(), and avoids needing lookbehind support.
+    // The leading alternative consumes a character, which shifts the reported
+    // index back by one; harmless, because the guard reads the clause before it.
     try {
       return {
         on: on,
-        re: new RegExp("(?:^|\\W)(?:" + alts.join("|") + ")(?!\\w)", "i"),
+        // "g" so fires() can walk every occurrence, not only the first.
+        re: new RegExp("(?:^|\\W)(?:" + alts.join("|") + ")(?!\\w)", "gi"),
         delta: t.delta,
         words: t.words.slice(),   // kept for introspection and testing
       };
@@ -1092,7 +1148,7 @@ const RM = (function () {
         if (t.on !== "both" && t.on !== phase) continue;
         const key = e.id + "#" + i;
         if (s.fired[key]) continue;
-        if (!t.re.test(src)) continue;
+        if (!fires(t.re, src)) continue;
         s.fired[key] = 1;
         const r = addVal(s, e.id, t.delta);
         if (r && r.before !== r.after) changes.push(r);

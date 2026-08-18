@@ -205,6 +205,25 @@ character, which is harmless for a boolean test, and avoids depending on lookbeh
 
 The result: `"rest"` fires on *"you rest"* but not on *restaurant*, *restore* or *arrest*.
 
+### Negated clauses do not fire
+
+A word list only asks whether a word is present, which meant every preset paid out for declining:
+*"you do not eat"* fed the character and *"you don't drink"* watered them. A trigger word sitting
+in a negated clause is now ignored.
+
+A negator (, , , , , , , , ,
+, , , ) only reaches back to the last clause break,
+so *"It was not a good day. You eat."* still feeds you, and every occurrence is checked, so *"you do
+not eat the berries, then you eat the fish"* does too.
+
+A comma counts as a break. That mis-reads a negated list, *"you do not eat, drink, or rest"*, where
+the later items should stay suppressed. It is the better default anyway: getting a comma wrong means
+firing, which is what the framework did before the guard existed, while leaving the comma out means
+silently withholding a payout the player earned.
+
+Bare  and  are deliberately not negators. They negate as often as not, but they also appear
+in *"no choice but to eat"*. Set  for the old behaviour.
+
 ### Firing rules
 
 A trigger fires **at most once per turn**, even if its word appears in both the player's action and
