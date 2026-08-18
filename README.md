@@ -148,6 +148,11 @@ costs only re-parsing.
 | `fired` | Trigger keys already counted this turn; the once-per-turn latch. |
 | `over` | Player overrides parsed from the story card. |
 | `msgPrev` | The last toast we wrote, for cooperative `state.message` use. |
+
+> The toast is rendered as **markdown**, so a lone newline is only a space. Multi-line toasts are
+> written with a two-space hard break; without it the status block collapses into one wrapped
+> paragraph and, because a bar is an unbreakable token, every row's icon is stranded on the line
+> above.
 | `msgOpen` | Whether a flush already happened this generation, so a later hook adds to the message instead of replacing it. |
 | `cardOK` `warned` `cfgWarned` `pendingStop` | Small flags. |
 

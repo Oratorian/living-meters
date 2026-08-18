@@ -1157,6 +1157,14 @@ const RM = (function () {
   // hook, so this buffer resets by itself each time.
   let TOASTS = [];
 
+  // The client renders the toast as markdown, where a lone newline is only a
+  // space. Without a hard break the status block collapses into one wrapped
+  // paragraph, and because a bar is a single unbreakable token every row's
+  // icon and label end up stranded on the line above. Two trailing spaces is
+  // the standard markdown hard break, and is harmless if the toast turns out
+  // to be plain text after all.
+  const BREAK = "  \n";
+
   function toast(s, msg) {
     if (msg && TOASTS.indexOf(msg) === -1) TOASTS.push(msg);
   }
@@ -1165,7 +1173,9 @@ const RM = (function () {
   // put there ourselves, so we never clobber another script's toast.
   function flushToast(s) {
     if (!TOASTS.length) return;
-    const msg = TOASTS.join("\n");
+    // Every newline has to become a hard break, including ones inside a single
+    // queued message such as the status block or the /help list.
+    const msg = TOASTS.join("\n").split("\n").join(BREAK);
     TOASTS = [];
     const current = typeof state.message === "string" ? state.message : "";
     if (current && current !== s.msgPrev) return; // somebody else owns the slot
@@ -1178,7 +1188,7 @@ const RM = (function () {
     let out;
     if (current && s.msgOpen) {
       if (current.indexOf(msg) !== -1) return;   // already on screen
-      out = current + "\n" + msg;
+      out = current + BREAK + msg;
     } else {
       // The client suppresses a toast identical to the previous one; perturb it.
       out = current === msg ? msg + " " : msg;
