@@ -457,11 +457,18 @@ warmth.off
 | `difficulty = easy\|normal\|hard` | Scales every loss |
 | `<id>.perTurn = -3` | Change the per-turn drift |
 | `<id>.max = 150` / `<id>.min = 0` | Move the ceiling or floor |
+| `<id>.start = 60` | The value `/reset` restores |
 | `<id>.visible = off` | Track it, but hide it from the AI and the dashboard |
 | `<id>.off` / `<id>.on` | Stop or resume tracking entirely |
 
-`#` starts a comment. Unknown lines are ignored, and a malformed value falls back to the creator's
-setting rather than breaking the run.
+`#` starts a comment, and a malformed value falls back to the creator's setting rather than
+breaking the run.
+
+A line whose key is not in that table is **reported to the player once**, naming the key. Silence
+would be worse: the parser accepts any `key = value`, so a case slip like `hp.perturn`, or a
+creator-only setting like `statusEvery`, would otherwise sit in the card being ignored while the
+player waited for it to do something. Fix the line and the warning stops; make a different mistake
+and it raises a fresh one.
 
 ### Commands
 
@@ -470,7 +477,7 @@ setting rather than breaking the run.
 | `/status` | Show every tracked resource |
 | `/hp` | Query one resource |
 | `/hp +10` `/hp -5` `/hp =80` | Adjust it (ignores difficulty scaling) |
-| `/reset` | Restore starting values |
+| `/reset` | Restore starting values, including a `start` set in the card |
 | `/help` | List the commands |
 
 ---

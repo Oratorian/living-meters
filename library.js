@@ -867,6 +867,7 @@ const RM = (function () {
       cfgWarned: false,   // config problems have been shown once
       fired: {},          // trigger keys already counted this turn
       over: {},        // player overrides parsed from the story card
+      overWarn: "",    // unknown card keys we have already flagged
     };
   }
 
@@ -895,6 +896,7 @@ const RM = (function () {
     if (typeof raw.cfgWarned === "boolean") s.cfgWarned = raw.cfgWarned;
     if (raw.fired && typeof raw.fired === "object") s.fired = raw.fired;
     if (raw.over && typeof raw.over === "object") s.over = raw.over;
+    if (typeof raw.overWarn === "string") s.overWarn = raw.overWarn;
     return s;
   }
 
@@ -939,6 +941,35 @@ const RM = (function () {
       else over[key] = rawVal;
     }
     return over;
+  }
+
+  // Every key the card can actually set. parseOverrides accepts any
+  // "key = value" line, so without this a typo, or a creator-only setting like
+  // statusEvery, is stored forever and silently ignored. That is how a player
+  // ends up convinced the card does nothing.
+  const OVER_GLOBALS = ["difficulty"];
+  const OVER_FIELDS = ["min", "max", "start", "perTurn", "visible", "enabled"];
+
+  function checkOverrides(s) {
+    const ids = defs().map((d) => d.id);
+    const bad = [];
+    for (const key of Object.keys(s.over)) {
+      if (OVER_GLOBALS.indexOf(key) !== -1) continue;
+      const dot = key.lastIndexOf(".");
+      const id = dot === -1 ? "" : key.slice(0, dot);
+      const field = dot === -1 ? "" : key.slice(dot + 1);
+      if (ids.indexOf(id) !== -1 && OVER_FIELDS.indexOf(field) !== -1) continue;
+      bad.push(key);
+    }
+    // Keyed on the exact set, so fixing the card stops the warning and a new
+    // mistake raises a fresh one.
+    const sig = bad.join(",");
+    if (sig === s.overWarn) return;
+    s.overWarn = sig;
+    if (!bad.length) return;
+    toast(s, "Living Meters card: " + bad.map((k) => '"' + k + '"').join(", ") +
+      (bad.length > 1 ? " are not settings." : " is not a setting.") +
+      " See the notes at the top of the card.");
   }
 
   function optNum(s, key, fallback) {
@@ -1162,6 +1193,9 @@ const RM = (function () {
     "#   difficulty = easy | normal | hard",
     "#   <resource>.perTurn = -2      how much it drifts each turn",
     "#   <resource>.max     = 120     raise or lower the ceiling",
+    "#   <resource>.min     = 10      raise or lower the floor",
+    "#   <resource>.start   = 60      the value /reset restores",
+    "#   <resource>.visible = off     keep tracking it, stop showing it",
     "#   <resource>.off               stop tracking it entirely",
     "#   <resource>.on                track it again",
     "#",
@@ -1216,6 +1250,7 @@ const RM = (function () {
 
     // The player owns `description`; we only ever read it.
     s.over = parseOverrides(card.description);
+    checkOverrides(s);
 
     // We own `entry`, and it never reaches the AI because `keys` never matches.
     const block = statusBlock(s);
@@ -1262,7 +1297,9 @@ const RM = (function () {
     if (cmd === "status") return statusBlock(s) || "No resources are being tracked.";
 
     if (cmd === "reset") {
-      for (const d of defs()) setVal(s, d.id, d.start);
+      // eff() rather than the raw definition, so a start set in the card
+      // is what /reset restores.
+      for (const d of defs()) setVal(s, d.id, eff(s, d).start);
       s.band = {};
       return "Meters reset.\n\n" + statusBlock(s);
     }
