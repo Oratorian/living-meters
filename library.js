@@ -860,7 +860,7 @@ const RM = (function () {
       hlen: 0,         // history.length at the last counted turn
       outHash: 0,      // hash of the last output we scanned
       msgPrev: "",     // last toast we wrote, for cooperative state.message
-      msgTurn: -1,     // the turn we wrote it on, so later hooks can add to it
+      msgOpen: false,  // a flush already happened this generation; add to it
       cardOK: true,    // false once we detect story cards are unavailable
       warned: false,
       pendingStop: false, // a command ran in Input; Context executes the halt
@@ -889,7 +889,7 @@ const RM = (function () {
     if (isNum(raw.hlen)) s.hlen = raw.hlen;
     if (isNum(raw.outHash)) s.outHash = raw.outHash;
     if (typeof raw.msgPrev === "string") s.msgPrev = raw.msgPrev;
-    if (isNum(raw.msgTurn)) s.msgTurn = raw.msgTurn;
+    if (typeof raw.msgOpen === "boolean") s.msgOpen = raw.msgOpen;
     if (typeof raw.cardOK === "boolean") s.cardOK = raw.cardOK;
     if (typeof raw.warned === "boolean") s.warned = raw.warned;
     if (typeof raw.pendingStop === "boolean") s.pendingStop = raw.pendingStop;
@@ -1171,12 +1171,13 @@ const RM = (function () {
     if (current && current !== s.msgPrev) return; // somebody else owns the slot
 
     // The Library re-executes per hook, so every hook flushes its own buffer.
-    // Within one turn, ADD to what we already wrote rather than replacing it.
-    // statusEvery queues its block during Context; without this an Output-hook
-    // band announcement overwrites it and the player never sees the status.
+    // Within one generation, ADD to what we already wrote rather than replacing
+    // it: a card warning raised in Input, a status block queued in Context and a
+    // band announcement from Output all belong to the same moment, and whichever
+    // flushed first should not disappear.
     let out;
-    if (current && s.msgTurn === s.turn) {
-      if (current.indexOf(msg) !== -1) return;   // already on screen this turn
+    if (current && s.msgOpen) {
+      if (current.indexOf(msg) !== -1) return;   // already on screen
       out = current + "\n" + msg;
     } else {
       // The client suppresses a toast identical to the previous one; perturb it.
@@ -1184,7 +1185,7 @@ const RM = (function () {
     }
     state.message = out;
     s.msgPrev = out;
-    s.msgTurn = s.turn;
+    s.msgOpen = true;
   }
 
   // ---- story card ---------------------------------------------------------
@@ -1424,6 +1425,7 @@ const RM = (function () {
 
     try {
       s.fired = {};              // a new player action begins a new turn
+      s.msgOpen = false;         // and a new message, not an addition
       reportProblems(s);
       syncCard(s);
 
@@ -1534,6 +1536,10 @@ const RM = (function () {
     }
 
     flushToast(s);
+    // Output is the last hook of every generation, including a Continue, which
+    // never calls Input. Closing the message here is what keeps the next
+    // generation from appending to this one.
+    s.msgOpen = false;
     persist(s);
     // Never return an empty string: onOutput throws a player-visible error.
     return out.length ? out : " ";

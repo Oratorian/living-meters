@@ -148,7 +148,7 @@ costs only re-parsing.
 | `fired` | Trigger keys already counted this turn; the once-per-turn latch. |
 | `over` | Player overrides parsed from the story card. |
 | `msgPrev` | The last toast we wrote, for cooperative `state.message` use. |
-| `msgTurn` | The turn it was written on, so a later hook adds to it instead of replacing it. |
+| `msgOpen` | Whether a flush already happened this generation, so a later hook adds to the message instead of replacing it. |
 | `cardOK` `warned` `cfgWarned` `pendingStop` | Small flags. |
 
 `state` is **JSON-serialised between turns**, so it holds plain data only. Compiled regexes live in
