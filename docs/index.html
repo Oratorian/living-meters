@@ -124,9 +124,9 @@ const RAW = "https://raw.githubusercontent.com/Oratorian/living-meters/main/libr
 // system of its own needs that system called from the tabs too, so the panel
 // under the report lets you edit all three. See currentHooks().
 const DEFAULT_HOOKS = {
-  input:   'const modifier = (text) => { text = RM.input(text); return { text }; };\nmodifier(text);',
-  context: 'const modifier = (text) => { [text, stop] = RM.context(text, stop); return { text, stop }; };\nmodifier(text);',
-  output:  'const modifier = (text) => { text = RM.output(text); return { text }; };\nmodifier(text);',
+  input:   'const modifier = (text) => {\n\ntext = RM.input(text);\nreturn { text };\n\n};\nmodifier(text);',
+  context: 'const modifier = (text) => {\n\n[text, stop] = RM.context(text, stop);\nreturn { text, stop };\n\n};\nmodifier(text);',
+  output:  'const modifier = (text) => {\n\ntext = RM.output(text);\nreturn { text };\n\n};\nmodifier(text);',
 };
 
 const HOOK_IDS = { input: "hook-input", context: "hook-context", output: "hook-output" };
