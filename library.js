@@ -1265,7 +1265,10 @@ const RM = (function () {
     const msg = TOASTS.join("\n").split("\n").join(BREAK);
     TOASTS = [];
     const current = typeof state.message === "string" ? state.message : "";
-    if (current && current !== s.msgPrev) return; // somebody else owns the slot
+    if (current && current !== s.msgPrev) {
+      s.msgPrev = current;   // somebody else owns the slot; note it and retry next turn
+      return;
+    }
 
     // The Library re-executes per hook, so every hook flushes its own buffer.
     // Within one generation, ADD to what we already wrote rather than replacing
